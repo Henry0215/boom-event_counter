@@ -834,6 +834,7 @@ class BoomNonBlockingDCacheModule(outer: BoomNonBlockingDCache) extends LazyModu
     cache_resp(w).valid         := s2_valid(w) && s2_send_resp(w)
     cache_resp(w).bits.uop      := s2_req(w).uop
     cache_resp(w).bits.data     := loadgen(w).data | s2_sc_fail
+    cache_resp(w).bits.row_data := s2_data_muxed(w)
     cache_resp(w).bits.is_hella := s2_req(w).is_hella
   }
 
