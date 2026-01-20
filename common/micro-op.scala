@@ -111,6 +111,12 @@ class MicroOp(implicit p: Parameters) extends BoomBundle
                                                      // drain, clear fetcha fter it (tell ROB to un-ready until empty)
   val flush_on_commit  = Bool()                      // some instructions need to flush the pipeline behind them
 
+  // Load-clar and Fat-load support
+  val is_load_clar     = Bool()                      // Is this a load-clar instruction?
+  val is_fat_load      = Bool()                      // Is this a fat-load instruction?
+  val clar_bank_id     = UInt(2.W)                   // Which CLAR bank to use (0-3)
+  val clar_offset      = UInt(2.W)                   // Offset within the CLAR bank data
+
   // Preditation
   def is_sfb_br        = is_br && is_sfb && enableSFBOpt.B // Does this write a predicate
   def is_sfb_shadow    = !is_br && is_sfb && enableSFBOpt.B // Is this predicated

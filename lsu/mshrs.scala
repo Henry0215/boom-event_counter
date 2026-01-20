@@ -264,6 +264,7 @@ class BoomMSHR(implicit edge: TLEdgeOut, p: Parameters) extends BoomModule()(p)
     io.resp.valid     := rpq.io.deq.valid && io.lb_read.fire() && drain_load
     io.resp.bits.uop  := rpq.io.deq.bits.uop
     io.resp.bits.data := loadgen.data
+    io.resp.bits.row_data := data  // Pass full row data for fat-load
     io.resp.bits.is_hella := rpq.io.deq.bits.is_hella
     when (rpq.io.deq.fire()) {
       commit_line   := true.B
@@ -450,6 +451,7 @@ class BoomIOMSHR(id: Int)(implicit edge: TLEdgeOut, p: Parameters) extends BoomM
   io.resp.valid     := (state === s_resp) && send_resp
   io.resp.bits.uop  := req.uop
   io.resp.bits.data := loadgen.data
+  io.resp.bits.row_data := 0.U  // MMIO doesn't support row data
 
   when (io.req.fire()) {
     req   := io.req.bits

@@ -76,6 +76,7 @@ class BoomDCacheResp(implicit p: Parameters) extends BoomBundle()(p)
   with HasBoomUOP
 {
   val data = Bits(coreDataBits.W)
+  val row_data = UInt(encRowBits.W) // For Clar
   val is_hella = Bool()
 }
 
@@ -191,8 +192,73 @@ class LDQEntry(implicit p: Parameters) extends BoomBundle()(p)
   val forward_std_val     = Bool()
   val forward_stq_idx     = UInt(stqAddrSz.W) // Which store did we get the store-load forward from?
 
+  val is_load_clar        = Bool()
+  val clar_bank_id        = UInt(2.W)
+  val clar_offset         = UInt(2.W)
+  val is_fat_load         = Bool()
+
   val debug_wb_data       = UInt(xLen.W)
 }
+
+// 新增 Clar 类
+class ClarBank(implicit p: Parameters) extends BoomModule()(p)
+  with freechips.rocketchip.rocket.HasL1HellaCacheParameters
+{
+  val io = IO(new Bundle {
+    val write_val = Input(Bool())
+    val write_row = Input(UInt(encRowBits.W))
+    val write_prc = Input(UInt(4.W))
+    val read_en = Input(Bool())
+    val read_data = Output(UInt(encRowBits.W))
+    val read_prc = Output(UInt(4.W))
+    val read_ready = Output(Bool())
+    val read_paddr = Output(UInt(paddrBits.W))
+    val flush = Input(Bool())
+  })
+
+  val valid = RegInit(false.B)
+  val data_ready = RegInit(false.B)
+  val prc = Reg(UInt(4.W))
+  val regionData = Reg(UInt(encRowBits.W))
+  val paddr = Reg(UInt(paddrBits.W))
+
+  // Default outputs
+  io.read_data := 0.U
+  io.read_prc := 0.U
+  io.read_ready := valid && data_ready
+  io.read_paddr := paddr
+
+  // Write has priority over flush to avoid losing data
+  when (io.write_val && !io.flush) {
+    regionData := io.write_row
+    valid := true.B
+    data_ready := true.B
+    prc := io.write_prc
+  }
+  
+  when (io.flush) {
+    valid := false.B
+    data_ready := false.B
+  }
+
+  when (io.read_en && valid && data_ready) {
+    io.read_data := regionData
+    io.read_prc := prc
+  }
+}
+
+// class CLARBank(implicit p: Parameters) extends BoomBundle()(p)
+// {
+//   val valid = Bool()
+//   val data_ready = Bool()
+//   val PRC = UInt(4.W)
+//   val RegionData = Valid(UInt(xLen.W))
+// }
+
+// class CLARS(implicit p: Parameters) extends BoomBundle()(p)
+// {
+//   val banks = Vec(4, new ClarBank)
+// }
 
 class STQEntry(implicit p: Parameters) extends BoomBundle()(p)
    with HasBoomUOP
@@ -212,6 +278,16 @@ class LSU(implicit p: Parameters, edge: TLEdgeOut) extends BoomModule()(p)
 {
   val io = IO(new LSUIO)
 
+  // Instantiate CLARS (4 banks for load-clar and fat-load)
+  val clars = Seq.fill(4) { Module(new ClarBank) }
+  // Initialize CLAR banks
+  for (i <- 0 until 4) {
+    clars(i).io.write_val := false.B
+    clars(i).io.write_row := 0.U
+    clars(i).io.write_prc := 0.U
+    clars(i).io.read_en := false.B
+    clars(i).io.flush := false.B
+  }
 
   val ldq = Reg(Vec(numLdqEntries, Valid(new LDQEntry)))
   val stq = Reg(Vec(numStqEntries, Valid(new STQEntry)))
@@ -323,12 +399,22 @@ class LSU(implicit p: Parameters, edge: TLEdgeOut) extends BoomModule()(p)
       ldq(ld_enq_idx).bits.youngest_stq_idx  := st_enq_idx
       ldq(ld_enq_idx).bits.st_dep_mask     := next_live_store_mask
 
-      ldq(ld_enq_idx).bits.addr.valid      := false.B
+      ldq(ld_enq_idx).bits.addr.valid      := !io.core.dis_uops(w).bits.is_load_clar // load-clar get addr automatically
+      ldq(ld_enq_idx).bits.addr_is_virtual := !io.core.dis_uops(w).bits.is_load_clar
       ldq(ld_enq_idx).bits.executed        := false.B
       ldq(ld_enq_idx).bits.succeeded       := false.B
       ldq(ld_enq_idx).bits.order_fail      := false.B
       ldq(ld_enq_idx).bits.observed        := false.B
       ldq(ld_enq_idx).bits.forward_std_val := false.B
+
+      ldq(ld_enq_idx).bits.is_load_clar     := io.core.dis_uops(w).bits.is_load_clar
+      ldq(ld_enq_idx).bits.clar_bank_id    := io.core.dis_uops(w).bits.clar_bank_id
+      ldq(ld_enq_idx).bits.clar_offset     := io.core.dis_uops(w).bits.clar_offset
+      ldq(ld_enq_idx).bits.is_fat_load      := io.core.dis_uops(w).bits.is_fat_load
+
+      when(io.core.dis_uops(w).bits.is_load_clar) {
+        ldq(ld_enq_idx).bits.addr := clars(io.core.dis_uops(w).bits.clar_bank_id).io.read_paddr
+      }
 
       assert (ld_enq_idx === io.core.dis_uops(w).bits.ldq_idx, "[lsu] mismatch enq load tag.")
       assert (!ldq(ld_enq_idx).valid, "[lsu] Enqueuing uop is overwriting ldq entries")
@@ -1287,6 +1373,103 @@ class LSU(implicit p: Parameters, edge: TLEdgeOut) extends BoomModule()(p)
   //-------------------------------------------------------------
   //-------------------------------------------------------------
 
+  // Load-clar: First select candidate, then check for conflicts
+  // Step 0: Detect if any fat-load is writing this cycle (fat-load has priority)
+  val fat_load_active = Wire(Vec(4, Bool()))
+  for (i <- 0 until 4) {
+    fat_load_active(i) := false.B
+  }
+  for (w <- 0 until memWidth) {
+    when (io.dmem.resp(w).valid && io.dmem.resp(w).bits.uop.uses_ldq) {
+      val ldq_idx = io.dmem.resp(w).bits.uop.ldq_idx
+      when (ldq(ldq_idx).bits.is_fat_load) {
+        val fat_bank_id = ldq(ldq_idx).bits.clar_bank_id
+        fat_load_active(fat_bank_id) := true.B
+      }
+    }
+  }
+  
+  // Step 1: Find the oldest ready load-clar candidate (excluding banks being written by fat-load)
+  val load_clar_has_candidate = Wire(Bool())
+  val load_clar_idx_candidate = Wire(UInt(ldqAddrSz.W))
+  
+  val load_clar_candidates = (0 until numLdqEntries).map(i => {
+    val e = ldq(i)
+    e.valid && e.bits.is_load_clar && 
+    !fat_load_active(e.bits.clar_bank_id) &&  // Don't select if fat-load is active on same bank
+    clars(e.bits.clar_bank_id).io.read_ready &&
+    !e.bits.succeeded &&
+    !IsKilledByBranch(io.core.brupdate, e.bits.uop) &&
+    e.bits.observed != true.B
+  })
+  
+  load_clar_has_candidate := load_clar_candidates.reduce(_||_)
+  load_clar_idx_candidate := AgePriorityEncoder(load_clar_candidates, ldq_head)
+  
+  // Step 2: Check if the selected candidate has store-load conflicts
+  val load_clar_has_conflict = WireInit(false.B)
+  val load_clar_candidate_e = ldq(load_clar_idx_candidate)
+  
+  when (load_clar_has_candidate && load_clar_candidate_e.valid && 
+        load_clar_candidate_e.bits.is_load_clar && 
+        load_clar_candidate_e.bits.addr.valid) {
+    val ld_addr = load_clar_candidate_e.bits.addr.bits
+    val ld_mask = GenByteMask(ld_addr, load_clar_candidate_e.bits.uop.mem_size)
+    
+    // Check all older stores in STQ for conflicts
+    for (j <- 0 until numStqEntries) {
+      when (stq(j).valid && load_clar_candidate_e.bits.st_dep_mask(j) && stq(j).bits.addr.valid) {
+        val st_addr = stq(j).bits.addr.bits
+        val st_mask = GenByteMask(st_addr, stq(j).bits.uop.mem_size)
+        val addr_match = (st_addr(corePAddrBits-1,3) === ld_addr(corePAddrBits-1,3))
+        val mask_conflict = (ld_mask & st_mask) =/= 0.U
+        
+        when (addr_match && mask_conflict) {
+          load_clar_has_conflict := true.B
+        }
+      }
+    }
+  }
+  
+  // Step 3: Downgrade if conflict detected, update register for persistence
+  when (load_clar_has_candidate && load_clar_has_conflict) {
+    ldq(load_clar_idx_candidate).bits.is_load_clar := false.B
+  }
+  
+  // Step 4: Can fire only if no conflict (using Wire for current cycle correctness)
+  val can_fire_load_clar = widthMap(w => {
+    val has_ready_clar = load_clar_has_candidate &&
+                         load_clar_candidate_e.valid && 
+                         load_clar_candidate_e.bits.is_load_clar &&
+                         !load_clar_has_conflict &&  // Use Wire to block immediately
+                         clars(load_clar_candidate_e.bits.clar_bank_id).io.read_ready &&
+                         !load_clar_candidate_e.bits.succeeded &&
+                         !IsKilledByBranch(io.core.brupdate, load_clar_candidate_e.bits.uop) &&
+                         load_clar_candidate_e.bits.observed != true.B
+    has_ready_clar && !dmem_resp_fired(w) && !wb_forward_valid(w)
+  })
+  
+  val load_clar_idx = load_clar_idx_candidate
+  val load_clar_valid = can_fire_load_clar.reduce(_||_)
+  val load_clar_e = ldq(load_clar_idx)
+  val load_clar_bank = load_clar_e.bits.clar_bank_id
+  val load_clar_offset = load_clar_e.bits.clar_offset
+  
+  // Connect read signals for load-clar
+  for (i <- 0 until 4) {
+    when (load_clar_valid && load_clar_bank === i.U) {
+      clars(i).io.read_en := true.B
+    }
+  }
+  
+  val load_clar_data_raw = clars(load_clar_bank).io.read_data
+  // Extract the word at the specified offset (with bounds check)
+  // offset is 2-bit (0-3), each offset is xLen bits, so max shift is 3*xLen
+  val load_clar_shift_amt = load_clar_offset * xLen.U
+  val load_clar_data = Mux(load_clar_valid, 
+                           (load_clar_data_raw >> load_clar_shift_amt)(xLen-1, 0),
+                           0.U)
+
   // Handle Memory Responses and nacks
   //----------------------------------
   for (w <- 0 until memWidth) {
@@ -1341,6 +1524,22 @@ class LSU(implicit p: Parameters, edge: TLEdgeOut) extends BoomModule()(p)
 
         ldq(ldq_idx).bits.succeeded      := io.core.exe(w).iresp.valid || io.core.exe(w).fresp.valid
         ldq(ldq_idx).bits.debug_wb_data  := io.dmem.resp(w).bits.data
+        
+        // For Fat-load: write row data to CLARS
+        when (ldq(ldq_idx).bits.is_fat_load) {
+          val fat_bank_id = ldq(ldq_idx).bits.clar_bank_id
+          clars(fat_bank_id).io.write_val := true.B
+          clars(fat_bank_id).io.write_row := io.dmem.resp(w).bits.row_data
+          clars(fat_bank_id).io.write_prc := 0.U // PRC can be set based on requirements
+          
+          // Invalidate any load-clar targeting the same bank (fat-load has priority)
+          for (i <- 0 until numLdqEntries) {
+            when (ldq(i).valid && ldq(i).bits.is_load_clar && 
+                  ldq(i).bits.clar_bank_id === fat_bank_id) {
+              ldq(i).bits.is_load_clar := false.B
+            }
+          }
+        }
       }
         .elsewhen (io.dmem.resp(w).bits.uop.uses_stq)
       {
@@ -1358,11 +1557,28 @@ class LSU(implicit p: Parameters, edge: TLEdgeOut) extends BoomModule()(p)
     }
 
 
-    when (dmem_resp_fired(w) && wb_forward_valid(w))
+    when (dmem_resp_fired(w) && wb_forward_valid(w) && can_fire_load_clar(w))
     {
       // Twiddle thumbs. Can't forward because dcache response takes precedence
+    } .elsewhen (!dmem_resp_fired(w) && can_fire_load_clar(w)){
+      val f_idx       = load_clar_idx
+      val forward_uop = ldq(f_idx).bits.uop
+      val live        = !IsKilledByBranch(io.core.brupdate, forward_uop)
+      
+      // Load-clar: read from CLARS and forward to register file
+      io.core.exe(w).iresp.valid := (forward_uop.dst_rtype === RT_FIX) && live
+      io.core.exe(w).fresp.valid := (forward_uop.dst_rtype === RT_FLT) && live
+      io.core.exe(w).iresp.bits.uop  := forward_uop
+      io.core.exe(w).fresp.bits.uop  := forward_uop
+      io.core.exe(w).iresp.bits.data := load_clar_data
+      io.core.exe(w).fresp.bits.data := load_clar_data
+      
+      when (live) {
+        ldq(f_idx).bits.succeeded := true.B
+        ldq(f_idx).bits.debug_wb_data := load_clar_data
+      }
     }
-      .elsewhen (!dmem_resp_fired(w) && wb_forward_valid(w))
+      .elsewhen (!dmem_resp_fired(w) && wb_forward_valid(w) && !can_fire_load_clar(w))
     {
       val f_idx       = wb_forward_ldq_idx(w)
       val forward_uop = ldq(f_idx).bits.uop
