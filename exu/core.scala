@@ -140,6 +140,28 @@ class BoomCore(usingTrace: Boolean)(implicit p: Parameters) extends BoomModule
   val rob              = Module(new Rob(
                            numIrfWritePorts + numFpWakeupPorts, // +memWidth for ll writebacks
                            numFpWakeupPorts))
+  
+  // CMAP (Cache Line Address Mapping) Table for load-clar optimization
+  // Tracks base register row offsets to determine if loads can use CLAR
+  // CMAP Design Decision: Use LOGICAL registers (lrs1) instead of physical (prs1)
+  // Rationale:
+  //   - Lookup happens at decode stage (before rename) for timing
+  //   - Logical registers are stable within a function's scope
+  //   - Physical registers would require dispatch-stage lookup (longer critical path)
+  //   - Trade-off: May have false conflicts after register renaming, but conservative is safe
+  val numCmapEntries = 4  // Number of base registers to track
+  val dcache_row_bits = clarRowBits  // Number of words in a row (log2)
+  val cmap_valid = RegInit(VecInit(Seq.fill(numCmapEntries)(false.B)))
+  val cmap_base_reg = Reg(Vec(numCmapEntries, UInt(lregSz.W)))  // LOGICAL register number (lrs1)
+  val cmap_page_offset = Reg(Vec(numCmapEntries, UInt(corePgIdxBits.W)))  // Row base page offset (16B aligned)
+  val cmap_row_offset = Reg(Vec(numCmapEntries, UInt(4.W)))  // Row identifier within page (bits [11:4])
+  val cmap_bank_id = Reg(Vec(numCmapEntries, UInt(clarBankBits.W)))  // CLAR bank ID
+  val cmap_lru = Reg(Vec(numCmapEntries, UInt(log2Ceil(numCmapEntries).W)))  // LRU for replacement
+  
+  // Deferred LRU update to break critical path in decode stage
+  val cmap_lru_update_valid = RegInit(VecInit(Seq.fill(coreWidth)(false.B)))
+  val cmap_lru_update_idx = Reg(Vec(coreWidth, UInt(log2Ceil(numCmapEntries).W)))
+  
   // Used to wakeup registers in rename and issue. ROB needs to listen to something else.
   val int_iss_wakeups  = Wire(Vec(numIntIssueWakeupPorts, Valid(new ExeUnitResp(xLen))))
   val int_ren_wakeups  = Wire(Vec(numIntRenameWakeupPorts, Valid(new ExeUnitResp(xLen))))
@@ -425,28 +447,28 @@ class BoomCore(usingTrace: Boolean)(implicit p: Parameters) extends BoomModule
   
   // fb output information
   val dec_fbundle_vals = Wire(Vec(coreWidth, Bool()))
-  val fb_out_zero = !io.ifu.fetchpacket.valid
-  val fb_out_full = dec_fbundle_vals.reduce(_&&_)
-  val fb_out_notFull = !fb_out_full && io.ifu.fetchpacket.valid
+  // val fb_out_zero = !io.ifu.fetchpacket.valid
+  // val fb_out_full = dec_fbundle_vals.reduce(_&&_)
+  // val fb_out_notFull = !fb_out_full && io.ifu.fetchpacket.valid
 
   // decode information
-  val dec_out_zero = !dec_fire.reduce(_||_)
-  val dec_out_full = dec_fire.reduce(_&&_)
-  val dec_out_notFull = !dec_out_full && !dec_out_zero
+  // val dec_out_zero = !dec_fire.reduce(_||_)
+  // val dec_out_full = dec_fire.reduce(_&&_)
+  // val dec_out_notFull = !dec_out_full && !dec_out_zero
 
   // dispatch information
-  val dis_out_zero = !dis_fire.reduce(_||_)
-  val dis_out_full = dis_fire.reduce(_&&_)
-  val dis_out_notFull = !dis_out_full && !dis_out_zero
+  // val dis_out_zero = !dis_fire.reduce(_||_)
+  // val dis_out_full = dis_fire.reduce(_&&_)
+  // val dis_out_notFull = !dis_out_full && !dis_out_zero
 
   val ldq_dis_stall = Wire(Vec(coreWidth, Bool()))
-  val stq_dis_stall = Wire(Vec(coreWidth, Bool())) 
-  val rob_dis_stall = !rob.io.ready
+  // val stq_dis_stall = Wire(Vec(coreWidth, Bool())) 
+  // val rob_dis_stall = !rob.io.ready
 
   for(w <- 0 until coreWidth) {
     dec_fbundle_vals(w) := io.ifu.fetchpacket.bits.uops(w).valid
     ldq_dis_stall(w) := io.lsu.ldq_full(w) && dis_uops(w).uses_ldq
-    stq_dis_stall(w) := io.lsu.stq_full(w) && dis_uops(w).uses_stq
+    // stq_dis_stall(w) := io.lsu.stq_full(w) && dis_uops(w).uses_stq
   }
 
   // issue information,
@@ -493,27 +515,27 @@ class BoomCore(usingTrace: Boolean)(implicit p: Parameters) extends BoomModule
   //commit inst type
   val com_is_ld   = Wire(Vec(coreWidth, Bool()))
   val com_is_st   = Wire(Vec(coreWidth, Bool()))
-  val com_is_br   = Wire(Vec(coreWidth, Bool()))
-  val com_is_jalr = Wire(Vec(coreWidth, Bool()))
-  val com_is_ret  = Wire(Vec(coreWidth, Bool()))
-  val com_is_jalrcall  = Wire(Vec(coreWidth, Bool()))
+  // val com_is_br   = Wire(Vec(coreWidth, Bool()))
+  // val com_is_jalr = Wire(Vec(coreWidth, Bool()))
+  // val com_is_ret  = Wire(Vec(coreWidth, Bool()))
+  // val com_is_jalrcall  = Wire(Vec(coreWidth, Bool()))
 
   // commit misprediction information
-  val com_misp_br   = Wire(Vec(coreWidth, Bool()))
-  val com_misp_jalr = Wire(Vec(coreWidth, Bool()))
-  val com_misp_ret  = Wire(Vec(coreWidth, Bool()))
-  val com_misp_jalrcall  = Wire(Vec(coreWidth, Bool()))
-  val com_misp_cfi  = Wire(Vec(coreWidth, Bool()))
+  // val com_misp_br   = Wire(Vec(coreWidth, Bool()))
+  // val com_misp_jalr = Wire(Vec(coreWidth, Bool()))
+  // val com_misp_ret  = Wire(Vec(coreWidth, Bool()))
+  // val com_misp_jalrcall  = Wire(Vec(coreWidth, Bool()))
+  // val com_misp_cfi  = Wire(Vec(coreWidth, Bool()))
 
   for(w <- 0 until coreWidth) {
     val uop = rob.io.commit.uops(w)
     val valid = rob.io.commit.arch_valids(w)
     com_is_ld(w) := valid && uop.uses_ldq 
     com_is_st(w) := valid && uop.uses_stq 
-    com_is_br(w) := valid && uop.is_br 
-    com_is_jalr(w)  := valid && uop.is_jalr 
-    com_is_ret(w)   := valid && uop.is_jalr && (uop.ldst === 0.U) && (uop.lrs1 === 1.U)                   
-    com_is_jalrcall(w) := valid && uop.is_jalr && (uop.ldst === 1.U)  
+    // com_is_br(w) := valid && uop.is_br 
+    // com_is_jalr(w)  := valid && uop.is_jalr 
+    // com_is_ret(w)   := valid && uop.is_jalr && (uop.ldst === 0.U) && (uop.lrs1 === 1.U)                   
+    // com_is_jalrcall(w) := valid && uop.is_jalr && (uop.ldst === 1.U)  
 
     com_misp_br(w)    := com_is_br(w)   && uop.debug_fsrc === BSRC_C
     com_misp_jalr(w)  := com_is_jalr(w) && uop.debug_fsrc === BSRC_C 
@@ -549,33 +571,33 @@ class BoomCore(usingTrace: Boolean)(implicit p: Parameters) extends BoomModule
   when (startCounter) {
     event_counters.io.event_signals(0) :=   1.U  //cycles
     event_counters.io.event_signals(1) :=  RegNext(PopCount(rob.io.commit.arch_valids.asUInt)) // commit inst
-    event_counters.io.event_signals(2) :=  Mux(io.ifu.icache_valid_access, 1.U, 0.U) //i-cache valid access number
-    event_counters.io.event_signals(3) :=  Mux(io.ifu.icache_hit, 1.U, 0.U)  //icache hit number
-    event_counters.io.event_signals(4) :=  Mux(io.ifu.perf.acquire, 1.U, 0.U) //i-cache send req to next level cache
-    event_counters.io.event_signals(5) :=  Mux(io.ifu.itlb_valid_access, 1.U, 0.U) //itlb valid access number
-    event_counters.io.event_signals(6) :=  Mux(io.ifu.itlb_hit, 1.U, 0.U) //itlb hit number
-    event_counters.io.event_signals(7) :=  Mux(io.ifu.perf.tlbMiss, 1.U, 0.U) //i-tlb start ptw
-    event_counters.io.event_signals(8) :=  Mux(io.ifu.bpsrc_f1, 1.U, 0.U) // npc use f1
-    event_counters.io.event_signals(9) :=  Mux(io.ifu.bpsrc_f2, 1.U, 0.U) // npc use f2
-    event_counters.io.event_signals(10) :=  Mux(io.ifu.bpsrc_f3, 1.U, 0.U) // npc use f3
-    event_counters.io.event_signals(11) :=  Mux(io.ifu.bpsrc_core, 1.U, 0.U) // npc use core information
+    // event_counters.io.event_signals(2) :=  Mux(io.ifu.icache_valid_access, 1.U, 0.U) //i-cache valid access number
+    // event_counters.io.event_signals(3) :=  Mux(io.ifu.icache_hit, 1.U, 0.U)  //icache hit number
+    // event_counters.io.event_signals(4) :=  Mux(io.ifu.perf.acquire, 1.U, 0.U) //i-cache send req to next level cache
+    // event_counters.io.event_signals(5) :=  Mux(io.ifu.itlb_valid_access, 1.U, 0.U) //itlb valid access number
+    // event_counters.io.event_signals(6) :=  Mux(io.ifu.itlb_hit, 1.U, 0.U) //itlb hit number
+    // event_counters.io.event_signals(7) :=  Mux(io.ifu.perf.tlbMiss, 1.U, 0.U) //i-tlb start ptw
+    // event_counters.io.event_signals(8) :=  Mux(io.ifu.bpsrc_f1, 1.U, 0.U) // npc use f1
+    // event_counters.io.event_signals(9) :=  Mux(io.ifu.bpsrc_f2, 1.U, 0.U) // npc use f2
+    // event_counters.io.event_signals(10) :=  Mux(io.ifu.bpsrc_f3, 1.U, 0.U) // npc use f3
+    // event_counters.io.event_signals(11) :=  Mux(io.ifu.bpsrc_core, 1.U, 0.U) // npc use core information
 
-    event_counters.io.event_signals(12) :=  Mux(fb_out_zero, 1.U, 0.U)  //fetch buffer output no valid inst
-    event_counters.io.event_signals(13) :=  Mux(fb_out_full, 1.U, 0.U)  //fb output has corewidth valid inst
-    event_counters.io.event_signals(14) :=  Mux(fb_out_notFull, 1.U, 0.U) //fbout has valid inst but not full
+    // event_counters.io.event_signals(12) :=  Mux(fb_out_zero, 1.U, 0.U)  //fetch buffer output no valid inst
+    // event_counters.io.event_signals(13) :=  Mux(fb_out_full, 1.U, 0.U)  //fb output has corewidth valid inst
+    // event_counters.io.event_signals(14) :=  Mux(fb_out_notFull, 1.U, 0.U) //fbout has valid inst but not full
 
-    event_counters.io.event_signals(15) :=  Mux(dec_out_zero, 1.U, 0.U)  //decode output no valid inst
-    event_counters.io.event_signals(16) :=  Mux(dec_out_full, 1.U, 0.U)  //decode output has corewidth valid inst
-    event_counters.io.event_signals(17) :=  Mux(dec_out_notFull, 1.U, 0.U) //decode out has valid inst but not full
-    event_counters.io.event_signals(18) :=  Mux(dec_brmask_logic.io.is_full.reduce(_||_), 1.U, 0.U) //brmask full cycles
-    event_counters.io.event_signals(19) :=  PopCount(ren_stalls.asUInt)  //rename stall number
+    // event_counters.io.event_signals(15) :=  Mux(dec_out_zero, 1.U, 0.U)  //decode output no valid inst
+    // event_counters.io.event_signals(16) :=  Mux(dec_out_full, 1.U, 0.U)  //decode output has corewidth valid inst
+    // event_counters.io.event_signals(17) :=  Mux(dec_out_notFull, 1.U, 0.U) //decode out has valid inst but not full
+    // event_counters.io.event_signals(18) :=  Mux(dec_brmask_logic.io.is_full.reduce(_||_), 1.U, 0.U) //brmask full cycles
+    // event_counters.io.event_signals(19) :=  PopCount(ren_stalls.asUInt)  //rename stall number
 
-    event_counters.io.event_signals(20) :=  Mux(dis_out_zero, 1.U, 0.U)  //dispatch output no valid inst
-    event_counters.io.event_signals(21) :=  Mux(dis_out_full, 1.U, 0.U)  //dispatch output has corewidth valid inst
-    event_counters.io.event_signals(22) :=  Mux(dis_out_notFull, 1.U, 0.U) //dispatch out has valid inst but not full
+    // event_counters.io.event_signals(20) :=  Mux(dis_out_zero, 1.U, 0.U)  //dispatch output no valid inst
+    // event_counters.io.event_signals(21) :=  Mux(dis_out_full, 1.U, 0.U)  //dispatch output has corewidth valid inst
+    // event_counters.io.event_signals(22) :=  Mux(dis_out_notFull, 1.U, 0.U) //dispatch out has valid inst but not full
     event_counters.io.event_signals(23) :=  PopCount(ldq_dis_stall.asUInt)  //ldq dispatch stall times
-    event_counters.io.event_signals(24) :=  PopCount(stq_dis_stall.asUInt)  //stq dispatch stall times
-    event_counters.io.event_signals(25) :=  Mux(rob_dis_stall, 1.U, 0.U)  //rob stall dispatch cycles
+    // event_counters.io.event_signals(24) :=  PopCount(stq_dis_stall.asUInt)  //stq dispatch stall times
+    // event_counters.io.event_signals(25) :=  Mux(rob_dis_stall, 1.U, 0.U)  //rob stall dispatch cycles
 
     event_counters.io.event_signals(26) :=  PopCount(iss_valids.asUInt)  //issue int uop number
     event_counters.io.event_signals(27) :=  Mux(iss_val_zero, 1.U, 0.U)  //issue output no valid inst
@@ -603,14 +625,14 @@ class BoomCore(usingTrace: Boolean)(implicit p: Parameters) extends BoomModule
 
     event_counters.io.event_signals(47) :=  PopCount(com_is_ld.asUInt)       //commit ld number
     event_counters.io.event_signals(48) :=  PopCount(com_is_st.asUInt)       //commit st number
-    event_counters.io.event_signals(49) :=  PopCount(com_is_br.asUInt)       //commit br number
-    event_counters.io.event_signals(50) :=  PopCount(com_is_jalr.asUInt)   //commit jalr number
-    event_counters.io.event_signals(51) :=  PopCount(com_is_ret.asUInt)     //commit jalr-ret number
-    event_counters.io.event_signals(52) :=  PopCount(com_is_jalrcall.asUInt)  //commit jalr-call number
-    event_counters.io.event_signals(53) :=  PopCount(com_misp_br.asUInt)       //com misp br number
-    event_counters.io.event_signals(54) :=  PopCount(com_misp_jalr.asUInt)   //com misp jalr number
-    event_counters.io.event_signals(55) :=  PopCount(com_misp_ret.asUInt)     //com misp jalr-ret number
-    event_counters.io.event_signals(56) :=  PopCount(com_misp_jalrcall.asUInt)  //com misp jalr-call number
+    // event_counters.io.event_signals(49) :=  PopCount(com_is_br.asUInt)       //commit br number
+    // event_counters.io.event_signals(50) :=  PopCount(com_is_jalr.asUInt)   //commit jalr number
+    // event_counters.io.event_signals(51) :=  PopCount(com_is_ret.asUInt)     //commit jalr-ret number
+    // event_counters.io.event_signals(52) :=  PopCount(com_is_jalrcall.asUInt)  //commit jalr-call number
+    // event_counters.io.event_signals(53) :=  PopCount(com_misp_br.asUInt)       //com misp br number
+    // event_counters.io.event_signals(54) :=  PopCount(com_misp_jalr.asUInt)   //com misp jalr number
+    // event_counters.io.event_signals(55) :=  PopCount(com_misp_ret.asUInt)     //com misp jalr-ret number
+    // event_counters.io.event_signals(56) :=  PopCount(com_misp_jalrcall.asUInt)  //com misp jalr-call number
 
     event_counters.io.event_signals(57) :=  Mux(io.ptw.perf.l2miss, 1.U, 0.U) //L2 TLB miss
     event_counters.io.event_signals(58) :=  Mux(misalign_excpt, 1.U, 0.U)  //misalign_excpt
@@ -795,6 +817,152 @@ class BoomCore(usingTrace: Boolean)(implicit p: Parameters) extends BoomModule
       dec_uops(w).exception := true.B
       dec_uops(w).exc_cause := Cause_OverFlow
     }
+  }
+  
+  //-------------------------------------------------------------
+  // CMAP Logic: Check if load can be converted to load-clar
+  //-------------------------------------------------------------
+  
+  // dcache_row_bits已在前面定义，表示row内有多少个word (encRowBits/xLen)
+  
+  // Track CMAP updates this cycle for bypass logic
+  val cmap_update_valid = Wire(Vec(memWidth, Bool()))
+  val cmap_update_base_reg = Wire(Vec(memWidth, UInt(lregSz.W)))
+  val cmap_update_page_offset = Wire(Vec(memWidth, UInt(corePgIdxBits.W)))
+  val cmap_update_row_offset = Wire(Vec(memWidth, UInt(4.W)))
+  val cmap_update_bank_id = Wire(Vec(memWidth, UInt(clarBankBits.W)))
+  
+  for (w <- 0 until memWidth) {
+    cmap_update_valid(w) := false.B
+    cmap_update_base_reg(w) := 0.U
+    cmap_update_page_offset(w) := 0.U
+    cmap_update_row_offset(w) := 0.U
+    cmap_update_bank_id(w) := 0.U
+  }
+  
+  for (w <- 0 until coreWidth) {
+    // Default: not a load-clar
+    dec_uops(w).is_load_clar := false.B
+    dec_uops(w).clar_bank_id := 0.U
+    dec_uops(w).clar_offset := 0.U
+    dec_uops(w).clar_version := false.B
+    dec_uops(w).clar_page_offset := 0.U
+    dec_uops(w).clar_same_cacheline := false.B
+    dec_uops(w).clar_addr_ready := false.B
+    
+    // Default: no LRU update
+    cmap_lru_update_valid(w) := false.B
+    cmap_lru_update_idx(w) := 0.U
+    
+    // Check if this is a load instruction
+    val is_load = dec_uops(w).uses_ldq && dec_uops(w).ctrl.is_load
+    
+    when (is_load && dec_valids(w)) {
+      val rs1 = dec_uops(w).lrs1  // Logical register - used as CMAP key
+      val imm = dec_uops(w).imm_packed  // Immediate offset
+      
+      // Check if any CMAP update this cycle targets the same base register
+      // Both use logical register (lrs1) so direct comparison is valid
+      var update_conflict = WireInit(false.B)
+      for (m <- 0 until memWidth) {
+        when (cmap_update_valid(m) && cmap_update_base_reg(m) === rs1) {
+          update_conflict := true.B
+        }
+      }
+      
+      // Search CMAP for matching base register
+      var cmap_hit = WireInit(false.B)
+      var cmap_hit_idx = WireInit(0.U(log2Ceil(numCmapEntries).W))
+      var same_page = WireInit(false.B)       // Within same page (can skip TLB)
+      var same_cacheline = WireInit(false.B)  // Within same cacheline (for CLAR)
+      var same_row = WireInit(false.B)        // Within same row (can use load-clar)
+      var clar_offset_wire = WireInit(0.U(clarOffsetBits.W))
+      var hit_bank_id = WireInit(0.U(clarBankBits.W))
+      var target_page_offset_wire = WireInit(0.U(corePgIdxBits.W))
+      
+      for (i <- 0 until numCmapEntries) {
+        when (cmap_valid(i) && cmap_base_reg(i) === rs1) {
+          cmap_hit := true.B
+          cmap_hit_idx := i.U
+          hit_bank_id := cmap_bank_id(i)
+          
+          // Extract the page offset from immediate (sign-extended)
+          val imm_offset = imm(corePgIdxBits - 1, 0)
+          
+          // Level 1: Check same page
+          // CRITICAL: base_page_offset is row-aligned (lower 4 bits = 0)
+          // target address = row_base + imm_offset
+          val base_page_offset = cmap_page_offset(i)  // Row base offset (aligned)
+          val target_addr_offset = base_page_offset + imm_offset
+          val no_carry_page = !target_addr_offset(corePgIdxBits)
+          
+          // Save target page offset for later use
+          target_page_offset_wire := target_addr_offset(corePgIdxBits - 1, 0)
+          
+          when (no_carry_page) {
+            same_page := true.B
+            
+            // Level 2: Check same row using row offset (bits [11:4])
+            // CMAP stores the row base offset, check if target is in same row
+            val base_row_offset = cmap_row_offset(i)  // Bits [11:4] of row base
+            val target_row_offset = target_addr_offset(corePgIdxBits - 1, 4)  // Bits [11:4] of target
+            val same_row_check = base_row_offset === target_row_offset
+            
+            when (same_row_check) {
+              same_row := true.B
+              same_cacheline := true.B  // Same row implies same cacheline
+              // Extract word offset within the row (for xLen=64, encRowBits=128: 0-1)
+              // Word offset = bits[log2(xLen/8) + clarRowBits - 1 : log2(xLen/8)]
+              clar_offset_wire := target_addr_offset(log2Ceil(xLen/8) + dcache_row_bits - 1, log2Ceil(xLen/8))
+            } .otherwise {
+              // Different row but same page - can skip TLB but not use load-clar
+              same_row := false.B
+              same_cacheline := false.B
+            }
+          }
+        }
+      }
+      
+      // If we have a CMAP hit and no update conflict:
+      // - If same_page: can compute address early (skip TLB) - page-level optimization!
+      // - If same_row: can use load-clar (read from CLAR)
+      // - Record CLAR version for consistency check at dispatch
+      when (cmap_hit && same_page && !update_conflict) {
+        // Enable page-level address translation (skip TLB)
+        dec_uops(w).clar_same_cacheline := true.B  // Reuse this flag for "addr ready" semantic
+        dec_uops(w).clar_bank_id := cmap_bank_id(cmap_hit_idx)
+        
+        // Store target page offset for dispatch (computed earlier in CMAP search loop)
+        dec_uops(w).clar_page_offset := target_page_offset_wire
+        
+        // Record version for consistency check
+        dec_uops(w).clar_version := lsu.io.core.clar_version(hit_bank_id)
+          
+        when (same_row) {
+          dec_uops(w).is_load_clar := true.B
+          dec_uops(w).clar_offset := clar_offset_wire
+          dec_uops(w).clar_addr_ready := true.B
+        }
+        
+        // Defer LRU update to next cycle to avoid critical path
+        cmap_lru_update_valid(w) := true.B
+        cmap_lru_update_idx(w) := cmap_hit_idx
+      }
+    }
+  }
+  
+  // Process deferred LRU updates (executed in next cycle after decode)
+  for (w <- 0 until coreWidth) {
+    when (cmap_lru_update_valid(w)) {
+      val update_idx = cmap_lru_update_idx(w)
+      // Update LRU: accessed entry becomes most recently used
+      for (j <- 0 until numCmapEntries) {
+        when (cmap_lru(j) < cmap_lru(update_idx)) {
+          cmap_lru(j) := cmap_lru(j) + 1.U
+        }
+      }
+      cmap_lru(update_idx) := 0.U
+    }
   }  
 
   //-------------------------------------------------------------
@@ -888,6 +1056,87 @@ class BoomCore(usingTrace: Boolean)(implicit p: Parameters) extends BoomModule
   branch_mask_full := dec_brmask_logic.io.is_full
 
   //-------------------------------------------------------------
+  // CMAP Table Update Logic
+  //-------------------------------------------------------------
+  // Update CMAP when fat-load gets DCache response
+  // This captures the actual executed address
+  
+  for (w <- 0 until memWidth) {
+    when (lsu.io.core.fat_load_cmap_update(w).valid) {
+      val update_addr = lsu.io.core.fat_load_cmap_update(w).bits.addr
+      val update_bank = lsu.io.core.fat_load_cmap_update(w).bits.bank_id
+      // Store row base address offsets (aligned to 16 bytes):
+      // - page_offset: row base address within page (bits [11:4] valid, [3:0]=0)
+      // - row_offset: row identifier within page (bits [11:4])
+      // CRITICAL: Must align to row boundary since CLAR stores entire row
+      val row_base_addr = update_addr & ~((encRowBits/8 - 1).U)
+      val page_offset = row_base_addr(corePgIdxBits - 1, 0)  // Row base page offset
+      val row_offset = row_base_addr(corePgIdxBits - 1, 4)   // Row base bits [11:4]
+      
+      // Get the base register from the executed load instruction
+      // Use LOGICAL register (lrs1) to match decode-stage lookup
+      // This maintains consistency with decode-stage CMAP query
+      val exe_uop = lsu.io.core.exe(w).iresp.bits.uop
+      val rs1 = exe_uop.lrs1  // Logical register - matches decode stage
+      
+      // Populate bypass signals for decode stage conflict detection
+      cmap_update_valid(w) := true.B
+      cmap_update_base_reg(w) := rs1
+      cmap_update_page_offset(w) := page_offset
+      cmap_update_row_offset(w) := row_offset
+      cmap_update_bank_id(w) := update_bank
+      
+      // Search for existing entry with same base register
+      var found_entry = WireInit(false.B)
+      var update_idx = WireInit(0.U(log2Ceil(numCmapEntries).W))
+      
+      for (i <- 0 until numCmapEntries) {
+        when (cmap_valid(i) && cmap_base_reg(i) === rs1) {
+          found_entry := true.B
+          update_idx := i.U
+        }
+      }
+      
+      when (found_entry) {
+        // Update existing entry - stores both page offset and row offset
+        cmap_page_offset(update_idx) := page_offset
+        cmap_row_offset(update_idx) := row_offset
+        cmap_bank_id(update_idx) := update_bank
+        cmap_valid(update_idx) := true.B
+        
+        // Update LRU
+        for (j <- 0 until numCmapEntries) {
+          when (cmap_lru(j) < cmap_lru(update_idx)) {
+            cmap_lru(j) := cmap_lru(j) + 1.U
+          }
+        }
+        cmap_lru(update_idx) := 0.U
+      } .otherwise {
+        // Allocate new entry using LRU replacement
+        val lru_idx = PriorityEncoder(cmap_lru.map(_ === (numCmapEntries - 1).U))
+        
+        cmap_valid(lru_idx) := true.B
+        cmap_base_reg(lru_idx) := rs1
+        cmap_page_offset(lru_idx) := page_offset
+        cmap_row_offset(lru_idx) := row_offset
+        cmap_bank_id(lru_idx) := update_bank
+        
+        // Reset LRU for new entry
+        for (j <- 0 until numCmapEntries) {
+          cmap_lru(j) := Mux(j.U === lru_idx, 0.U, cmap_lru(j) + 1.U)
+        }
+      }
+    }
+  }
+  
+  // Flush CMAP on pipeline flush
+  when (rob.io.flush.valid) {
+    for (i <- 0 until numCmapEntries) {
+      cmap_valid(i) := false.B
+    }
+  }
+
+  //-------------------------------------------------------------
   //-------------------------------------------------------------
   // **** Register Rename Stage ****
   //-------------------------------------------------------------
@@ -950,6 +1199,34 @@ class BoomCore(usingTrace: Boolean)(implicit p: Parameters) extends BoomModule
     dis_uops(w).ppred_busy := p_uop.ppred_busy && dis_uops(w).is_sfb_shadow
 
     ren_stalls(w) := rename_stage.io.ren_stalls(w) || f_stall || p_stall
+  }
+
+  //-------------------------------------------------------------
+  // Invalidate CMAP/CLARS entries when destination registers are renamed
+  //-------------------------------------------------------------
+  // When a register is written (renamed to a new physical register),
+  // any CMAP entry using it as base register should be invalidated
+  
+  // Default: no flush
+  for (i <- 0 until numClarBanks) {
+    lsu.io.core.clar_flush(i) := false.B
+  }
+  
+  for (w <- 0 until coreWidth) {
+    when (dis_valids(w) && dis_uops(w).ldst_val && dis_uops(w).dst_rtype === RT_FIX) {
+      val dst_lreg = dis_uops(w).ldst
+      
+      // Check each CMAP entry
+      for (i <- 0 until numCmapEntries) {
+        when (cmap_valid(i) && cmap_base_reg(i) === dst_lreg) {
+          // Invalidate this CMAP entry
+          cmap_valid(i) := false.B
+          
+          // Also flush the corresponding CLAR bank
+          lsu.io.core.clar_flush(cmap_bank_id(i)) := true.B
+        }
+      }
+    }
   }
 
   //-------------------------------------------------------------

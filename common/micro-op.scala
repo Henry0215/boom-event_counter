@@ -114,8 +114,12 @@ class MicroOp(implicit p: Parameters) extends BoomBundle
   // Load-clar and Fat-load support
   val is_load_clar     = Bool()                      // Is this a load-clar instruction?
   val is_fat_load      = Bool()                      // Is this a fat-load instruction?
-  val clar_bank_id     = UInt(2.W)                   // Which CLAR bank to use (0-3)
-  val clar_offset      = UInt(2.W)                   // Offset within the CLAR bank data
+  val clar_bank_id     = UInt(log2Ceil(p(TileKey).core.asInstanceOf[boom.common.BoomCoreParams].numClarBanks).W)  // Which CLAR bank to use
+  val clar_offset      = UInt(log2Ceil(p(TileKey).core.asInstanceOf[boom.common.BoomCoreParams].encRowBits / p(XLen)).W)  // Offset within the CLAR bank data (word offset)
+  val clar_same_cacheline = Bool()                   // Load is within same page/cacheline (can compute paddr early)
+  val clar_addr_ready  = Bool()                      // Load is within same row (can use load-clar)
+  val clar_version     = Bool()                      // CLAR bank version at decode time (1-bit toggle for consistency check)
+  val clar_page_offset = UInt(12.W)                  // Target page offset (12 bits, for page-level address translation)
 
   // Preditation
   def is_sfb_br        = is_br && is_sfb && enableSFBOpt.B // Does this write a predicate

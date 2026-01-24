@@ -157,6 +157,18 @@ class LSUCoreIO(implicit p: Parameters) extends BoomBundle()(p)
     val release = Bool()
     val tlbMiss = Bool()
   })
+  
+  // CMAP update interface for fat-load
+  val fat_load_cmap_update = Output(Vec(memWidth, Valid(new Bundle {
+    val addr = UInt(coreMaxAddrBits.W)
+    val bank_id = UInt(clarBankBits.W)
+  })))
+  
+  // CLARS flush interface for register invalidation
+  val clar_flush = Input(Vec(numClarBanks, Bool()))
+  
+  // CLAR version numbers for consistency check (read by decode stage)
+  val clar_version = Output(Vec(numClarBanks, Bool()))
 
   //Enable_PerfCounter_Support: for lsu information
   val dtlb_valid_access = Output(UInt(4.W))
@@ -193,8 +205,8 @@ class LDQEntry(implicit p: Parameters) extends BoomBundle()(p)
   val forward_stq_idx     = UInt(stqAddrSz.W) // Which store did we get the store-load forward from?
 
   val is_load_clar        = Bool()
-  val clar_bank_id        = UInt(2.W)
-  val clar_offset         = UInt(2.W)
+  val clar_bank_id        = UInt(log2Ceil(numClarBanks).W)
+  val clar_offset         = UInt(clarOffsetBits.W)  // Word offset within CLAR row
   val is_fat_load         = Bool()
 
   val debug_wb_data       = UInt(xLen.W)
@@ -207,38 +219,86 @@ class ClarBank(implicit p: Parameters) extends BoomModule()(p)
   val io = IO(new Bundle {
     val write_val = Input(Bool())
     val write_row = Input(UInt(encRowBits.W))
+    val write_addr = Input(UInt(coreMaxAddrBits.W))  // Store base address for matching
     val write_prc = Input(UInt(4.W))
     val read_en = Input(Bool())
     val read_data = Output(UInt(encRowBits.W))
     val read_prc = Output(UInt(4.W))
     val read_ready = Output(Bool())
-    val read_paddr = Output(UInt(paddrBits.W))
+    val read_paddr = Output(UInt(coreMaxAddrBits.W))  // Base address for load-clar dispatch
     val flush = Input(Bool())
+    // For store commit update
+    val store_update_val = Input(Bool())
+    val store_update_addr = Input(UInt(coreMaxAddrBits.W))
+    val store_update_data = Input(UInt(xLen.W))
+    val store_update_mask = Input(UInt((xLen/8).W))
+    // Version number for consistency check
+    val version = Output(Bool())  // 1-bit version toggle
   })
 
   val valid = RegInit(false.B)
   val data_ready = RegInit(false.B)
   val prc = Reg(UInt(4.W))
   val regionData = Reg(UInt(encRowBits.W))
-  val paddr = Reg(UInt(paddrBits.W))
+  val baseAddr = Reg(UInt(coreMaxAddrBits.W))  // Store the base address of this row
+  val version_counter = RegInit(false.B)  // 1-bit version toggle on each write
 
   // Default outputs
   io.read_data := 0.U
   io.read_prc := 0.U
   io.read_ready := valid && data_ready
-  io.read_paddr := paddr
+  io.read_paddr := baseAddr  // Output the base address for load-clar dispatch
+  io.version := version_counter  // Output current version for decode stage
 
-  // Write has priority over flush to avoid losing data
+  // Check if store update matches this row
+  val row_mask = (encRowBits/8 - 1).U
+  val store_row_base = io.store_update_addr & ~row_mask
+  val store_addr_match = io.store_update_val && (store_row_base === baseAddr || io.write_val)
+  
+  // Calculate store update parameters (pre-compute for both cases)
+  val byte_offset = io.store_update_addr(log2Ceil(encRowBits/8)-1, 0)
+  val update_mask_shifted = io.store_update_mask << (byte_offset * 8.U)
+  val update_data_shifted = io.store_update_data << (byte_offset * 8.U)
+  val full_mask = FillInterleaved(8, update_mask_shifted)
+
+  // Handle write and store update - supports three scenarios:
+  // 1. Fat-load write only
+  // 2. Store commit update only  
+  // 3. Both in same cycle (merge updates)
   when (io.write_val && !io.flush) {
-    regionData := io.write_row
+    // Scenario 1 & 3: Fat-load writes new row data
+    val new_base_addr = io.write_addr & ~row_mask
+    baseAddr := new_base_addr
     valid := true.B
     data_ready := true.B
     prc := io.write_prc
+    version_counter := !version_counter  // Toggle version on write
+    
+    // Check if there's a concurrent store commit that overlaps with this row
+    val store_matches_new_row = io.store_update_val && (store_row_base === new_base_addr)
+    
+    when (store_matches_new_row) {
+      // Scenario 3: Merge - apply store update on top of the new row data
+      // This ensures store commit takes precedence over fat-load for overlapping bytes
+      regionData := (io.write_row & ~full_mask) | (update_data_shifted & full_mask)
+    } .otherwise {
+      // Scenario 1: Just write the row data from fat-load
+      regionData := io.write_row
+    }
+  } .elsewhen (io.store_update_val && valid && !io.flush) {
+    // Scenario 2: Store commit update only (no concurrent fat-load)
+    val addr_match = store_row_base === baseAddr
+    
+    when (addr_match) {
+      // Update only the bytes covered by the store, preserving other bytes
+      regionData := (regionData & ~full_mask) | (update_data_shifted & full_mask)
+    }
   }
   
   when (io.flush) {
     valid := false.B
     data_ready := false.B
+    version_counter := false.B  // Reset version on flush
   }
 
   when (io.read_en && valid && data_ready) {
@@ -278,15 +338,23 @@ class LSU(implicit p: Parameters, edge: TLEdgeOut) extends BoomModule()(p)
 {
   val io = IO(new LSUIO)
 
-  // Instantiate CLARS (4 banks for load-clar and fat-load)
-  val clars = Seq.fill(4) { Module(new ClarBank) }
+  // Instantiate CLARS (configurable number of banks for load-clar and fat-load)
+  val clars = Seq.fill(numClarBanks) { Module(new ClarBank) }
+  
   // Initialize CLAR banks
-  for (i <- 0 until 4) {
+  for (i <- 0 until numClarBanks) {
     clars(i).io.write_val := false.B
     clars(i).io.write_row := 0.U
+    clars(i).io.write_addr := 0.U
     clars(i).io.write_prc := 0.U
     clars(i).io.read_en := false.B
-    clars(i).io.flush := false.B
+    clars(i).io.flush := io.core.clar_flush(i)
+    clars(i).io.store_update_val := false.B
+    clars(i).io.store_update_addr := 0.U
+    clars(i).io.store_update_data := 0.U
+    clars(i).io.store_update_mask := 0.U
+    // Connect version output to core
+    io.core.clar_version(i) := clars(i).io.version
   }
 
   val ldq = Reg(Vec(numLdqEntries, Valid(new LDQEntry)))
@@ -399,21 +467,66 @@ class LSU(implicit p: Parameters, edge: TLEdgeOut) extends BoomModule()(p)
       ldq(ld_enq_idx).bits.youngest_stq_idx  := st_enq_idx
       ldq(ld_enq_idx).bits.st_dep_mask     := next_live_store_mask
 
-      ldq(ld_enq_idx).bits.addr.valid      := !io.core.dis_uops(w).bits.is_load_clar // load-clar get addr automatically
-      ldq(ld_enq_idx).bits.addr_is_virtual := !io.core.dis_uops(w).bits.is_load_clar
+      val is_load_clar = io.core.dis_uops(w).bits.is_load_clar
+      val clar_same_cacheline = io.core.dis_uops(w).bits.clar_same_cacheline
+      val clar_addr_ready = io.core.dis_uops(w).bits.clar_addr_ready
+      
+      // Address computation strategy:
+      // - clar_same_cacheline=true, clar_addr_ready=false: same cacheline but different row
+      //   -> Compute paddr early (skip TLB), but NOT load-clar (need memory access)
+      // - clar_same_cacheline=true, clar_addr_ready=true: same row
+      //   -> is_load_clar=true, read from CLAR, skip TLB
+      // - clar_same_cacheline=false: normal load
+      //   -> Need full address calculation and TLB
+      
+      ldq(ld_enq_idx).bits.addr.valid      := clar_same_cacheline  // addr ready if in same cacheline
+      ldq(ld_enq_idx).bits.addr_is_virtual := !clar_same_cacheline  // skip TLB if in same cacheline
       ldq(ld_enq_idx).bits.executed        := false.B
       ldq(ld_enq_idx).bits.succeeded       := false.B
       ldq(ld_enq_idx).bits.order_fail      := false.B
       ldq(ld_enq_idx).bits.observed        := false.B
       ldq(ld_enq_idx).bits.forward_std_val := false.B
 
-      ldq(ld_enq_idx).bits.is_load_clar     := io.core.dis_uops(w).bits.is_load_clar
+      // Only set is_load_clar when in same row (can read from CLAR)
+      ldq(ld_enq_idx).bits.is_load_clar     := is_load_clar && clar_addr_ready
       ldq(ld_enq_idx).bits.clar_bank_id    := io.core.dis_uops(w).bits.clar_bank_id
       ldq(ld_enq_idx).bits.clar_offset     := io.core.dis_uops(w).bits.clar_offset
       ldq(ld_enq_idx).bits.is_fat_load      := io.core.dis_uops(w).bits.is_fat_load
 
-      when(io.core.dis_uops(w).bits.is_load_clar) {
-        ldq(ld_enq_idx).bits.addr := clars(io.core.dis_uops(w).bits.clar_bank_id).io.read_paddr
+      // For loads with page-level address translation: compute physical address
+      // Two-level optimization:
+      // 1. Same page: use CLAR's page base + target page offset (skip TLB)
+      // 2. Same row: additionally use load-clar to read data directly
+      when(clar_same_cacheline) {  // This flag means "addr_ready" (page-level or better)
+        val clar_bank = io.core.dis_uops(w).bits.clar_bank_id
+        val is_load_clar = io.core.dis_uops(w).bits.is_load_clar
+        val clar_addr_ready = io.core.dis_uops(w).bits.clar_addr_ready
+        
+        // Version check is ALWAYS needed when using CLAR for address calculation
+        val expected_version = io.core.dis_uops(w).bits.clar_version
+        val current_version = clars(clar_bank).io.version
+        val version_match = expected_version === current_version
+        
+        when (version_match) {
+          // Get row address from CLAR (contains the page base)
+          val clar_row_addr = clars(clar_bank).io.read_paddr
+          
+          // Extract page base by masking lower 12 bits
+          val page_mask = ~((1 << corePgIdxBits) - 1).U(coreMaxAddrBits.W)
+          val page_base = clar_row_addr & page_mask
+          
+          // clar_page_offset is the target page offset (12 bits)
+          // Computed in decode as: base_page_offset + imm_offset
+          val target_page_offset = io.core.dis_uops(w).bits.clar_page_offset
+          
+          // Compute full physical address: page_base | target_page_offset
+          ldq(ld_enq_idx).bits.addr.bits := page_base | target_page_offset
+        } .otherwise {
+          // Version mismatch: CLAR was updated, disable optimization
+          ldq(ld_enq_idx).bits.addr.valid := false.B
+          ldq(ld_enq_idx).bits.addr_is_virtual := true.B  // Force TLB lookup
+          ldq(ld_enq_idx).bits.is_load_clar := false.B    // Disable load-clar
+        }
       }
 
       assert (ld_enq_idx === io.core.dis_uops(w).bits.ldq_idx, "[lsu] mismatch enq load tag.")
@@ -612,6 +725,7 @@ class LSU(implicit p: Parameters, edge: TLEdgeOut) extends BoomModule()(p)
                               !store_needs_order                                       &&
                               !block_load_wakeup                                       &&
                               (w == memWidth-1).B                                      &&
+                             !(ldq_wakeup_e.bits.is_load_clar && !ldq_wakeup_e.bits.observed) &&
                               (!ldq_wakeup_e.bits.addr_is_uncacheable || (io.core.commit_load_at_rob_head &&
                                                                           ldq_head === ldq_wakeup_idx &&
                                                                           ldq_wakeup_e.bits.st_dep_mask.asUInt === 0.U))))
@@ -1153,6 +1267,8 @@ class LSU(implicit p: Parameters, edge: TLEdgeOut) extends BoomModule()(p)
   val ldst_addr_matches    = WireInit(widthMap(w => VecInit((0 until numStqEntries).map(x=>false.B))))
   // Mask of stores which we can forward from
   val ldst_forward_matches = WireInit(widthMap(w => VecInit((0 until numStqEntries).map(x=>false.B))))
+  // Mask of committed stores that overlap with fat-load (for forwarding at writeback)
+  val fatload_committed_store_matches = WireInit(widthMap(w => VecInit((0 until numStqEntries).map(x=>false.B))))
 
   val failed_loads     = WireInit(VecInit((0 until numLdqEntries).map(x=>false.B))) // Loads which we will report as failures (throws a mini-exception)
   val nacking_loads    = WireInit(VecInit((0 until numLdqEntries).map(x=>false.B))) // Loads which are being nacked by dcache in the next stage
@@ -1270,6 +1386,27 @@ class LSU(implicit p: Parameters, edge: TLEdgeOut) extends BoomModule()(p)
           s1_set_execute(lcam_ldq_idx(w))    := false.B
         }
       }
+      
+      // For fat-load: detect committed stores that overlap with the cache line
+      // These will be forwarded to the row_data at writeback stage
+      when (do_ld_search(w) && 
+            ldq(lcam_ldq_idx(w)).valid && 
+            ldq(lcam_ldq_idx(w)).bits.is_fat_load &&
+            stq(i).valid && 
+            stq(i).bits.committed &&
+            stq(i).bits.addr.valid &&
+            stq(i).bits.data.valid &&
+            !stq(i).bits.addr_is_virtual) {
+        // Check if store overlaps with the fat-load's cache line
+        val fatload_addr = lcam_addr(w)
+        val row_mask = ~((encRowBits/8 - 1).U(corePAddrBits.W))
+        val fatload_row_base = fatload_addr & row_mask
+        val store_row_base = s_addr & row_mask
+        
+        when (fatload_row_base === store_row_base) {
+          fatload_committed_store_matches(w)(i) := true.B
+        }
+      }
     }
   }
 
@@ -1292,6 +1429,9 @@ class LSU(implicit p: Parameters, edge: TLEdgeOut) extends BoomModule()(p)
                                  !IsKilledByBranch(io.core.brupdate, lcam_uop(w))    &&
                                  !io.core.exception && !RegNext(io.core.exception)))
   mem_forward_stq_idx     := forwarding_idx
+  
+  // For fat-load: save committed store matches for writeback forwarding
+  val wb_fatload_committed_matches = RegNext(fatload_committed_store_matches)
 
   // Avoid deadlock with a 1-w LSU prioritizing load wakeups > store commits
   // On a 2W machine, load wakeups and store commits occupy separate pipelines,
@@ -1375,8 +1515,8 @@ class LSU(implicit p: Parameters, edge: TLEdgeOut) extends BoomModule()(p)
 
   // Load-clar: First select candidate, then check for conflicts
   // Step 0: Detect if any fat-load is writing this cycle (fat-load has priority)
-  val fat_load_active = Wire(Vec(4, Bool()))
-  for (i <- 0 until 4) {
+  val fat_load_active = Wire(Vec(numClarBanks, Bool()))
+  for (i <- 0 until numClarBanks) {
     fat_load_active(i) := false.B
   }
   for (w <- 0 until memWidth) {
@@ -1456,25 +1596,34 @@ class LSU(implicit p: Parameters, edge: TLEdgeOut) extends BoomModule()(p)
   val load_clar_offset = load_clar_e.bits.clar_offset
   
   // Connect read signals for load-clar
-  for (i <- 0 until 4) {
+  for (i <- 0 until numClarBanks) {
     when (load_clar_valid && load_clar_bank === i.U) {
       clars(i).io.read_en := true.B
     }
   }
   
   val load_clar_data_raw = clars(load_clar_bank).io.read_data
-  // Extract the word at the specified offset (with bounds check)
-  // offset is 2-bit (0-3), each offset is xLen bits, so max shift is 3*xLen
+  // Extract the word at the specified offset
+  // For xLen=64, encRowBits=128: offset is 1-bit (0-1), each word is 64 bits
+  // Max shift is (2^clarOffsetBits - 1) * xLen = 1 * 64 = 64 bits
   val load_clar_shift_amt = load_clar_offset * xLen.U
   val load_clar_data = Mux(load_clar_valid, 
                            (load_clar_data_raw >> load_clar_shift_amt)(xLen-1, 0),
                            0.U)
+  
+  // Connect read signals for load-clar
+  for (i <- 0 until numClarBanks) {
+    when (load_clar_valid && load_clar_bank === i.U) {
+      clars(i).io.read_en := true.B
+    }
+  }
 
   // Handle Memory Responses and nacks
   //----------------------------------
   for (w <- 0 until memWidth) {
     io.core.exe(w).iresp.valid := false.B
     io.core.exe(w).fresp.valid := false.B
+    io.core.fat_load_cmap_update(w).valid := false.B
   }
 
   val dmem_resp_fired = WireInit(widthMap(w => false.B))
@@ -1525,18 +1674,109 @@ class LSU(implicit p: Parameters, edge: TLEdgeOut) extends BoomModule()(p)
         ldq(ldq_idx).bits.succeeded      := io.core.exe(w).iresp.valid || io.core.exe(w).fresp.valid
         ldq(ldq_idx).bits.debug_wb_data  := io.dmem.resp(w).bits.data
         
-        // For Fat-load: write row data to CLARS
+        // For Fat-load: write row data to CLARS and update CMAP
         when (ldq(ldq_idx).bits.is_fat_load) {
           val fat_bank_id = ldq(ldq_idx).bits.clar_bank_id
+          val fat_load_addr = ldq(ldq_idx).bits.addr.bits
+          val row_data = io.dmem.resp(w).bits.row_data
+          
+          // Apply forwarding from committed stores detected in LCAM stage
+          // This handles stores that committed after fat-load was issued but before writeback
+          var forwarded_row_data = WireInit(row_data)
+          for (i <- 0 until numStqEntries) {
+            when (wb_fatload_committed_matches(w)(i) && 
+                  stq(i).valid && 
+                  stq(i).bits.addr.valid && 
+                  stq(i).bits.data.valid) {
+              val store_addr = stq(i).bits.addr.bits
+              val store_data = stq(i).bits.data.bits
+              val store_size = stq(i).bits.uop.mem_size
+              
+              // Calculate byte offset within the row
+              val byte_offset = store_addr(log2Ceil(encRowBits/8)-1, 0)
+              
+              // Generate store byte mask
+              val store_byte_mask = MuxLookup(store_size, 0.U, Seq(
+                0.U -> 1.U,      // byte
+                1.U -> 3.U,      // halfword
+                2.U -> 15.U,     // word
+                3.U -> 255.U     // doubleword
+              ))
+              
+              // Shift mask and data to correct position within row
+              val shifted_mask = store_byte_mask << byte_offset
+              val shifted_data = store_data << (byte_offset << 3)
+              val full_mask = FillInterleaved(8, shifted_mask)
+              
+              // Apply store data to row_data
+              forwarded_row_data = (forwarded_row_data & ~full_mask) | (shifted_data & full_mask)
+            }
+          }
+          
+          // Also merge stores committing in the SAME cycle (critical corner case)
+          // This handles the race where store commit and fat-load writeback happen simultaneously
+          var temp_commit_head = stq_commit_head
+          for (c <- 0 until coreWidth) {
+            when (commit_store_fatload_merge(w)(c)) {
+              val commit_idx = temp_commit_head
+              when (stq(commit_idx).valid &&
+                    stq(commit_idx).bits.addr.valid &&
+                    stq(commit_idx).bits.data.valid) {
+                val store_addr = stq(commit_idx).bits.addr.bits
+                val store_data = stq(commit_idx).bits.data.bits
+                val store_size = stq(commit_idx).bits.uop.mem_size
+                
+                // Calculate byte offset within the row
+                val byte_offset = store_addr(log2Ceil(encRowBits/8)-1, 0)
+                
+                // Generate store byte mask
+                val store_byte_mask = MuxLookup(store_size, 0.U, Seq(
+                  0.U -> 1.U,      // byte
+                  1.U -> 3.U,      // halfword
+                  2.U -> 15.U,     // word
+                  3.U -> 255.U     // doubleword
+                ))
+                
+                // Shift mask and data to correct position within row
+                val shifted_mask = store_byte_mask << byte_offset
+                val shifted_data = store_data << (byte_offset << 3)
+                val full_mask = FillInterleaved(8, shifted_mask)
+                
+                // Apply store data to row_data (on top of LCAM forwarding)
+                forwarded_row_data = (forwarded_row_data & ~full_mask) | (shifted_data & full_mask)
+              }
+            }
+            // Advance commit head for next iteration
+            temp_commit_head = WrapInc(temp_commit_head, numStqEntries)
+          }
+          
+          // Write the (potentially forwarded) row data to CLAR
           clars(fat_bank_id).io.write_val := true.B
-          clars(fat_bank_id).io.write_row := io.dmem.resp(w).bits.row_data
+          clars(fat_bank_id).io.write_row := forwarded_row_data
+          clars(fat_bank_id).io.write_addr := fat_load_addr
           clars(fat_bank_id).io.write_prc := 0.U // PRC can be set based on requirements
           
-          // Invalidate any load-clar targeting the same bank (fat-load has priority)
+          // Send CMAP update signal to core
+          io.core.fat_load_cmap_update(w).valid := true.B
+          io.core.fat_load_cmap_update(w).bits.addr := fat_load_addr
+          io.core.fat_load_cmap_update(w).bits.bank_id := fat_bank_id
+          
+          // Invalidate load-clars that overlap with the newly written cacheline
+          // Only invalidate if the load-clar's address is in the same cacheline
+          val row_mask = ~((encRowBits/8 - 1).U(coreMaxAddrBits.W))
+          val cacheline_mask = ~((cacheBlockBytes - 1).U(coreMaxAddrBits.W))
+          val fatload_cacheline = fat_load_addr & cacheline_mask
+          
           for (i <- 0 until numLdqEntries) {
-            when (ldq(i).valid && ldq(i).bits.is_load_clar && 
-                  ldq(i).bits.clar_bank_id === fat_bank_id) {
-              ldq(i).bits.is_load_clar := false.B
+            when (ldq(i).valid && 
+                  ldq(i).bits.is_load_clar && 
+                  ldq(i).bits.clar_bank_id === fat_bank_id &&
+                  ldq(i).bits.addr.valid) {
+              val loadclar_cacheline = ldq(i).bits.addr.bits & cacheline_mask
+              // Only invalidate if in the same cacheline
+              when (loadclar_cacheline === fatload_cacheline) {
+                ldq(i).bits.is_load_clar := false.B
+              }
             }
           }
         }
@@ -1678,6 +1918,15 @@ class LSU(implicit p: Parameters, edge: TLEdgeOut) extends BoomModule()(p)
   //-------------------------------------------------------------
   //-------------------------------------------------------------
 
+  // Track stores committing this cycle that overlap with fat-load writebacks
+  // These need to be merged into the fat-load's row_data in the same cycle
+  val commit_store_fatload_merge = Wire(Vec(memWidth, Vec(coreWidth, Bool())))
+  for (w <- 0 until memWidth) {
+    for (c <- 0 until coreWidth) {
+      commit_store_fatload_merge(w)(c) := false.B
+    }
+  }
+
   var temp_stq_commit_head = stq_commit_head
   var temp_ldq_head        = ldq_head
   for (w <- 0 until coreWidth)
@@ -1688,6 +1937,55 @@ class LSU(implicit p: Parameters, edge: TLEdgeOut) extends BoomModule()(p)
     when (commit_store)
     {
       stq(idx).bits.committed := true.B
+      
+      // Update CLAR banks when store commits
+      // Committed stores will be detected by fat-load's LCAM and forwarded at writeback
+      val store_addr = stq(idx).bits.addr.bits
+      val store_data = stq(idx).bits.data.bits
+      val store_size = stq(idx).bits.uop.mem_size
+      
+      // Generate byte mask based on store size
+      val store_mask = WireInit(0.U((xLen/8).W))
+      when (store_size === 0.U) { // byte
+        store_mask := 1.U
+      } .elsewhen (store_size === 1.U) { // halfword
+        store_mask := 3.U
+      } .elsewhen (store_size === 2.U) { // word
+        store_mask := 15.U
+      } .elsewhen (store_size === 3.U) { // doubleword
+        store_mask := 255.U
+      }
+      
+      when (stq(idx).bits.addr.valid && stq(idx).bits.data.valid) {
+        // Check if any fat-load is writing back this cycle with overlapping address
+        val row_mask = ~((encRowBits/8 - 1).U(coreMaxAddrBits.W))
+        val store_row_base = store_addr & row_mask
+        
+        for (m <- 0 until memWidth) {
+          when (io.dmem.resp(m).valid && 
+                io.dmem.resp(m).bits.uop.uses_ldq) {
+            val resp_ldq_idx = io.dmem.resp(m).bits.uop.ldq_idx
+            when (ldq(resp_ldq_idx).valid && 
+                  ldq(resp_ldq_idx).bits.is_fat_load) {
+              val fatload_addr = ldq(resp_ldq_idx).bits.addr.bits
+              val fatload_row_base = fatload_addr & row_mask
+              
+              when (store_row_base === fatload_row_base) {
+                // Mark that this store needs to merge with fat-load writeback
+                commit_store_fatload_merge(m)(w) := true.B
+              }
+            }
+          }
+        }
+        
+        // Update CLAR banks (for fat-loads that have already written to CLAR)
+        for (i <- 0 until numClarBanks) {
+          clars(i).io.store_update_val := true.B
+          clars(i).io.store_update_addr := store_addr
+          clars(i).io.store_update_data := store_data
+          clars(i).io.store_update_mask := store_mask
+        }
+      }
     } .elsewhen (commit_load) {
       assert (ldq(idx).valid, "[lsu] trying to commit an un-allocated load entry.")
       assert ((ldq(idx).bits.executed || ldq(idx).bits.forward_std_val) && ldq(idx).bits.succeeded ,

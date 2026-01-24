@@ -70,10 +70,14 @@ class IssueUnitStatic(
 
     for (w <- 0 until dispatchWidth) {
       // TODO add ctrl bit for "allocates iss_slot"
+      // Loads with address ready (same-page or load-clar) bypass issue
+      // They execute via load wakeup mechanism from LDQ directly
+      val addr_ready_load = dis_uops(w).uses_ldq && dis_uops(w).clar_same_cacheline
       temp_uop_val(w) := io.dis_uops(w).valid &&
                          !dis_uops(w).exception &&
                          !dis_uops(w).is_fence &&
                          !dis_uops(w).is_fencei &&
+                         !addr_ready_load &&
                          entry_wen_oh_array(i)(w)
     }
     entry_wen_oh(i) := temp_uop_val.asUInt
