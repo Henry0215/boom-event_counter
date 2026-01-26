@@ -78,17 +78,25 @@ class CompactingDispatcher(implicit p: Parameters) extends Dispatcher
     ren <> io.ren_uops
 
     val uses_iq = ren map (u => (u.bits.iq_type & ip.iqType.U).orR)
+    
+    // CMAP optimization: loads with ready address bypass issue queue
+    // They don't need AGU, so they don't enter the issue queue
+    val addr_ready_bypass = ren map (u => u.bits.uses_ldq && u.bits.cmap_addr_ready)
 
-    // Only request an issue slot if the uop needs to enter that queue.
-    (ren zip io.ren_uops zip uses_iq) foreach {case ((u,v),q) =>
-      u.valid := v.valid && q}
+    // Only request an issue slot if the uop needs to enter that queue
+    // AND it's not bypassing via CMAP address ready
+    (ren zip io.ren_uops zip uses_iq zip addr_ready_bypass) foreach {case (((u,v),q),bypass) =>
+      u.valid := v.valid && q && !bypass}
 
     val compactor = Module(new Compactor(coreWidth, ip.dispatchWidth, new MicroOp))
     compactor.io.in  <> ren
     dis <> compactor.io.out
 
-    // The queue is considered ready if the uop doesn't use it.
-    rdy := ren zip uses_iq map {case (u,q) => u.ready || !q}
+    // The queue is considered ready if:
+    // 1. The uop doesn't use this queue, OR
+    // 2. The uop is bypassing via CMAP address ready
+    rdy := (ren zip uses_iq zip addr_ready_bypass) map {case ((u,q),bypass) => 
+      u.ready || !q || bypass}
   }
 
   (ren_readys.reduce((r,i) =>

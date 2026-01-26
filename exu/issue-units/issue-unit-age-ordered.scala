@@ -59,9 +59,9 @@ class IssueUnitCollapsing(
   // which entries' uops will still be next cycle? (not being issued and vacated)
   val will_be_valid = (0 until numIssueSlots).map(i => issue_slots(i).will_be_valid) ++
                       (0 until dispatchWidth).map(i => {
-                        // Loads with address ready bypass issue queue
+                        // Loads with CMAP-ready address bypass issue queue
                         // They execute via load wakeup mechanism from LDQ
-                        val addr_ready_load = dis_uops(i).uses_ldq && dis_uops(i).clar_same_cacheline
+                        val addr_ready_load = dis_uops(i).uses_ldq && dis_uops(i).cmap_addr_ready
                         io.dis_uops(i).valid &&
                         !dis_uops(i).exception &&
                         !dis_uops(i).is_fence &&

@@ -70,9 +70,9 @@ class IssueUnitStatic(
 
     for (w <- 0 until dispatchWidth) {
       // TODO add ctrl bit for "allocates iss_slot"
-      // Loads with address ready (same-page or load-clar) bypass issue
+      // Loads with CMAP-ready address bypass issue queue
       // They execute via load wakeup mechanism from LDQ directly
-      val addr_ready_load = dis_uops(w).uses_ldq && dis_uops(w).clar_same_cacheline
+      val addr_ready_load = dis_uops(w).uses_ldq && dis_uops(w).cmap_addr_ready
       temp_uop_val(w) := io.dis_uops(w).valid &&
                          !dis_uops(w).exception &&
                          !dis_uops(w).is_fence &&

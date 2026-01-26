@@ -35,7 +35,6 @@ case class BoomCoreParams(
   numStqEntries: Int = 16,
   numIntPhysRegisters: Int = 96,
   numFpPhysRegisters: Int = 64,
-  numClarBanks: Int = 4,  // Number of CLAR banks (2, 4, or 8)
   maxBrCount: Int = 4,
   numFetchBufferEntries: Int = 16,
   enableAgePriorityIssue: Boolean = true,
@@ -150,16 +149,6 @@ trait HasBoomCoreParameters extends freechips.rocketchip.tile.HasCoreParameters
 
   // fetchWidth provided by CoreParams class.
   
-  //************************************
-  // CLAR Parameters
-  val numClarBanks = boomParams.numClarBanks
-  val clarBankBits = log2Ceil(numClarBanks)  // Bits needed to encode bank ID
-  // Each CLAR bank stores one row (encRowBits = 128 bits = 16 bytes)
-  // The number of words per row depends on xLen
-  val clarRowBits = log2Ceil(encRowBits / xLen)  // log2(words per row): 128/64=2 words, log2(2)=1
-  val clarOffsetBits = clarRowBits  // Offset within a row, same as row bits
-  // decodeWidth provided by CoreParams class.
-
   // coreWidth is width of decode, width of integer rename, width of ROB, and commit width
   val coreWidth = decodeWidth
 

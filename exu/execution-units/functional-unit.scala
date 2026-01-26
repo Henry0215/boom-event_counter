@@ -143,6 +143,7 @@ class BrUpdateMasks(implicit p: Parameters) extends BoomBundle
 {
   val resolve_mask = UInt(maxBrCount.W)
   val mispredict_mask = UInt(maxBrCount.W)
+  val cmap_flush = Bool()  // Invalidate all CMAP-derived physical addresses in pipeline
 }
 
 

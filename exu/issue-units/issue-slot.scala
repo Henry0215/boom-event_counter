@@ -273,6 +273,11 @@ class IssueSlot(val numWakeupPorts: Int)(implicit p: Parameters)
   io.out_uop.ppred_busy := !ppred
   io.out_uop.iw_p1_poisoned := p1_poisoned
   io.out_uop.iw_p2_poisoned := p2_poisoned
+  
+  // Clear CMAP physical address if global flush occurs
+  when (io.brupdate.b1.cmap_flush) {
+    io.out_uop.cmap_addr_ready := false.B
+  }
 
   when (state === s_valid_2) {
     when (p1 && p2 && ppred) {
