@@ -1321,10 +1321,20 @@ class BoomCore(usingTrace: Boolean)(implicit p: Parameters) extends BoomModule
   //-------------------------------------------------------------
   // Dispatch to issue queues
 
-  // Get uops from rename2
+  // Get uops from rename2, and handle CLAR version mismatch
   for (w <- 0 until coreWidth) {
+    val dispatch_uop = WireInit(dis_uops(w))
+    
+    // If LSU reports address not confirmed (version mismatch), clear CLAR optimization flags
+    // This forces the load to go through issue queue and normal AGU path
+    when (!io.lsu.addr_confirmed(w) && dispatch_uop.uses_ldq) {
+      dispatch_uop.clar_same_cacheline := false.B
+      dispatch_uop.clar_addr_ready := false.B
+      dispatch_uop.is_load_clar := false.B
+    }
+    
     dispatcher.io.ren_uops(w).valid := dis_fire(w)
-    dispatcher.io.ren_uops(w).bits  := dis_uops(w)
+    dispatcher.io.ren_uops(w).bits  := dispatch_uop
   }
 
   var iu_idx = 0

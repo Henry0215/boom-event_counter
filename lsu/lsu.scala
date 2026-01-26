@@ -120,6 +120,10 @@ class LSUCoreIO(implicit p: Parameters) extends BoomBundle()(p)
 
   val ldq_full    = Output(Vec(coreWidth, Bool()))
   val stq_full    = Output(Vec(coreWidth, Bool()))
+  
+  // Address confirmed: LSU confirms address is valid for bypass loads
+  // False when CLAR version mismatch - load must go through issue queue
+  val addr_confirmed = Output(Vec(coreWidth, Bool()))
 
   val fp_stdata   = Flipped(Decoupled(new ExeUnitResp(fLen)))
 
@@ -439,6 +443,24 @@ class LSU(implicit p: Parameters, edge: TLEdgeOut) extends BoomModule()(p)
     }
   }
 
+  //-------------------------------------------------------------
+  // Detect if any fat-load is completing this cycle
+  // Used for: 1) Dispatch version checking (prevent same-cycle conflicts)
+  //           2) Load-clar candidate selection (avoid bank conflicts)
+  val fat_load_completing = Wire(Vec(numClarBanks, Bool()))
+  for (i <- 0 until numClarBanks) {
+    fat_load_completing(i) := false.B
+  }
+  for (w <- 0 until memWidth) {
+    when (io.dmem.resp(w).valid && io.dmem.resp(w).bits.uop.uses_ldq) {
+      val ldq_idx = io.dmem.resp(w).bits.uop.ldq_idx
+      when (ldq(ldq_idx).bits.is_fat_load) {
+        val fat_bank_id = ldq(ldq_idx).bits.clar_bank_id
+        fat_load_completing(fat_bank_id) := true.B
+      }
+    }
+  }
+
   // Decode stage
   var ld_enq_idx = ldq_tail
   var st_enq_idx = stq_tail
@@ -458,8 +480,36 @@ class LSU(implicit p: Parameters, edge: TLEdgeOut) extends BoomModule()(p)
     io.core.stq_full(w)    := stq_full
     io.core.dis_stq_idx(w) := st_enq_idx
 
-    val dis_ld_val = io.core.dis_uops(w).valid && io.core.dis_uops(w).bits.uses_ldq && !io.core.dis_uops(w).bits.exception
-    val dis_st_val = io.core.dis_uops(w).valid && io.core.dis_uops(w).bits.uses_stq && !io.core.dis_uops(w).bits.exception
+    // Check for version mismatch: if CLAR version changed, address is invalid
+    val is_clar_optimized_load = io.core.dis_uops(w).valid && 
+                                 io.core.dis_uops(w).bits.uses_ldq && 
+                                 io.core.dis_uops(w).bits.clar_same_cacheline
+    val clar_bank = io.core.dis_uops(w).bits.clar_bank_id
+    val expected_version = io.core.dis_uops(w).bits.clar_version
+    // Only read CLAR version when actually needed (optimization)
+    val current_version = Mux(is_clar_optimized_load, 
+                              clars(clar_bank).io.version,
+                              false.B)  // Default value when not needed
+    
+    // Check for same-cycle fat-load conflict: if fat-load is completing to same bank,
+    // force version mismatch to prevent using stale CLAR data
+    val same_cycle_fat_load_conflict = is_clar_optimized_load && fat_load_completing(clar_bank)
+    
+    // Version matches only if: optimized load + version matches + no same-cycle fat-load conflict
+    val version_match = is_clar_optimized_load && 
+                        (expected_version === current_version) && 
+                        !same_cycle_fat_load_conflict
+    
+    // Confirm address is valid: only true when CLAR optimization succeeds
+    // - CLAR optimized + version match: address computed in dispatch, confirmed
+    // - CLAR optimized + version mismatch: address invalid, not confirmed
+    // - Normal load: address not yet computed (needs AGU), not confirmed
+    io.core.addr_confirmed(w) := version_match
+
+    val dis_ld_val = io.core.dis_uops(w).valid && io.core.dis_uops(w).bits.uses_ldq && 
+                     !io.core.dis_uops(w).bits.exception
+    val dis_st_val = io.core.dis_uops(w).valid && io.core.dis_uops(w).bits.uses_stq && 
+                     !io.core.dis_uops(w).bits.exception
     when (dis_ld_val)
     {
       ldq(ld_enq_idx).valid                := true.B
@@ -471,62 +521,36 @@ class LSU(implicit p: Parameters, edge: TLEdgeOut) extends BoomModule()(p)
       val clar_same_cacheline = io.core.dis_uops(w).bits.clar_same_cacheline
       val clar_addr_ready = io.core.dis_uops(w).bits.clar_addr_ready
       
-      // Address computation strategy:
-      // - clar_same_cacheline=true, clar_addr_ready=false: same cacheline but different row
-      //   -> Compute paddr early (skip TLB), but NOT load-clar (need memory access)
-      // - clar_same_cacheline=true, clar_addr_ready=true: same row
-      //   -> is_load_clar=true, read from CLAR, skip TLB
-      // - clar_same_cacheline=false: normal load
-      //   -> Need full address calculation and TLB
+      // Address computation strategy (using version_match from above):
+      // - version_match=true: CLAR optimization succeeds, address computed here
+      // - clar_same_cacheline=true but version_match=false: version mismatch, need AGU
+      // - clar_same_cacheline=false: normal load, need AGU
       
-      ldq(ld_enq_idx).bits.addr.valid      := clar_same_cacheline  // addr ready if in same cacheline
-      ldq(ld_enq_idx).bits.addr_is_virtual := !clar_same_cacheline  // skip TLB if in same cacheline
+      // Set address validity flags based on version check result
+      ldq(ld_enq_idx).bits.addr.valid      := version_match
+      ldq(ld_enq_idx).bits.addr_is_virtual := !version_match
+      ldq(ld_enq_idx).bits.addr.bits       := 0.U  // Default, will be set if version_match
       ldq(ld_enq_idx).bits.executed        := false.B
       ldq(ld_enq_idx).bits.succeeded       := false.B
       ldq(ld_enq_idx).bits.order_fail      := false.B
       ldq(ld_enq_idx).bits.observed        := false.B
       ldq(ld_enq_idx).bits.forward_std_val := false.B
 
-      // Only set is_load_clar when in same row (can read from CLAR)
-      ldq(ld_enq_idx).bits.is_load_clar     := is_load_clar && clar_addr_ready
+      // Only set is_load_clar when version matches and in same row
+      ldq(ld_enq_idx).bits.is_load_clar     := version_match && is_load_clar && clar_addr_ready
       ldq(ld_enq_idx).bits.clar_bank_id    := io.core.dis_uops(w).bits.clar_bank_id
       ldq(ld_enq_idx).bits.clar_offset     := io.core.dis_uops(w).bits.clar_offset
       ldq(ld_enq_idx).bits.is_fat_load      := io.core.dis_uops(w).bits.is_fat_load
 
-      // For loads with page-level address translation: compute physical address
-      // Two-level optimization:
-      // 1. Same page: use CLAR's page base + target page offset (skip TLB)
-      // 2. Same row: additionally use load-clar to read data directly
-      when(clar_same_cacheline) {  // This flag means "addr_ready" (page-level or better)
+      // For CLAR-optimized loads with version match: compute physical address
+      when(version_match) {
         val clar_bank = io.core.dis_uops(w).bits.clar_bank_id
-        val is_load_clar = io.core.dis_uops(w).bits.is_load_clar
-        val clar_addr_ready = io.core.dis_uops(w).bits.clar_addr_ready
+        val clar_row_addr = clars(clar_bank).io.read_paddr
+        val page_mask = ~((1 << corePgIdxBits) - 1).U(coreMaxAddrBits.W)
+        val page_base = clar_row_addr & page_mask
+        val target_page_offset = io.core.dis_uops(w).bits.clar_page_offset
         
-        // Version check is ALWAYS needed when using CLAR for address calculation
-        val expected_version = io.core.dis_uops(w).bits.clar_version
-        val current_version = clars(clar_bank).io.version
-        val version_match = expected_version === current_version
-        
-        when (version_match) {
-          // Get row address from CLAR (contains the page base)
-          val clar_row_addr = clars(clar_bank).io.read_paddr
-          
-          // Extract page base by masking lower 12 bits
-          val page_mask = ~((1 << corePgIdxBits) - 1).U(coreMaxAddrBits.W)
-          val page_base = clar_row_addr & page_mask
-          
-          // clar_page_offset is the target page offset (12 bits)
-          // Computed in decode as: base_page_offset + imm_offset
-          val target_page_offset = io.core.dis_uops(w).bits.clar_page_offset
-          
-          // Compute full physical address: page_base | target_page_offset
-          ldq(ld_enq_idx).bits.addr.bits := page_base | target_page_offset
-        } .otherwise {
-          // Version mismatch: CLAR was updated, disable optimization
-          ldq(ld_enq_idx).bits.addr.valid := false.B
-          ldq(ld_enq_idx).bits.addr_is_virtual := true.B  // Force TLB lookup
-          ldq(ld_enq_idx).bits.is_load_clar := false.B    // Disable load-clar
-        }
+        ldq(ld_enq_idx).bits.addr.bits := page_base | target_page_offset
       }
 
       assert (ld_enq_idx === io.core.dis_uops(w).bits.ldq_idx, "[lsu] mismatch enq load tag.")
@@ -1514,21 +1538,6 @@ class LSU(implicit p: Parameters, edge: TLEdgeOut) extends BoomModule()(p)
   //-------------------------------------------------------------
 
   // Load-clar: First select candidate, then check for conflicts
-  // Step 0: Detect if any fat-load is writing this cycle (fat-load has priority)
-  val fat_load_active = Wire(Vec(numClarBanks, Bool()))
-  for (i <- 0 until numClarBanks) {
-    fat_load_active(i) := false.B
-  }
-  for (w <- 0 until memWidth) {
-    when (io.dmem.resp(w).valid && io.dmem.resp(w).bits.uop.uses_ldq) {
-      val ldq_idx = io.dmem.resp(w).bits.uop.ldq_idx
-      when (ldq(ldq_idx).bits.is_fat_load) {
-        val fat_bank_id = ldq(ldq_idx).bits.clar_bank_id
-        fat_load_active(fat_bank_id) := true.B
-      }
-    }
-  }
-  
   // Step 1: Find the oldest ready load-clar candidate (excluding banks being written by fat-load)
   val load_clar_has_candidate = Wire(Bool())
   val load_clar_idx_candidate = Wire(UInt(ldqAddrSz.W))
@@ -1536,7 +1545,7 @@ class LSU(implicit p: Parameters, edge: TLEdgeOut) extends BoomModule()(p)
   val load_clar_candidates = (0 until numLdqEntries).map(i => {
     val e = ldq(i)
     e.valid && e.bits.is_load_clar && 
-    !fat_load_active(e.bits.clar_bank_id) &&  // Don't select if fat-load is active on same bank
+    !fat_load_completing(e.bits.clar_bank_id) &&  // Don't select if fat-load is completing on same bank
     clars(e.bits.clar_bank_id).io.read_ready &&
     !e.bits.succeeded &&
     !IsKilledByBranch(io.core.brupdate, e.bits.uop) &&
