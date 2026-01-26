@@ -548,8 +548,8 @@ class BoomCore(usingTrace: Boolean)(implicit p: Parameters) extends BoomModule
 
   when (startCounter) {
     // Only keep load and store related counters
-    // event_counters.io.event_signals(0) :=   1.U  //cycles
-    // event_counters.io.event_signals(1) :=  RegNext(PopCount(rob.io.commit.arch_valids.asUInt)) // commit inst
+    event_counters.io.event_signals(0) :=   1.U  //cycles
+    event_counters.io.event_signals(1) :=  RegNext(PopCount(rob.io.commit.arch_valids.asUInt)) // commit inst
     // event_counters.io.event_signals(2) :=  Mux(io.ifu.icache_valid_access, 1.U, 0.U) //i-cache valid access number
     // event_counters.io.event_signals(3) :=  Mux(io.ifu.icache_hit, 1.U, 0.U)  //icache hit number
     // event_counters.io.event_signals(4) :=  Mux(io.ifu.perf.acquire, 1.U, 0.U) //i-cache send req to next level cache
@@ -584,14 +584,14 @@ class BoomCore(usingTrace: Boolean)(implicit p: Parameters) extends BoomModule
     // event_counters.io.event_signals(29) :=  Mux(iss_val_notFull, 1.U, 0.U) //issue out has valid inst but not full
     // event_counters.io.event_signals(30) :=  PopCount(spec_miss_issuop.asUInt)  //valid mis-wakeup issue uop number
 
-    event_counters.io.event_signals(31) :=  PopCount(exe_is_ld.asUInt)       //execute ld number
-    event_counters.io.event_signals(32) :=  PopCount(exe_is_st.asUInt)       //execute st number
-    event_counters.io.event_signals(33) :=  io.lsu.dtlb_valid_access            //valid dtlb req number
-    event_counters.io.event_signals(34) :=  io.lsu.dtlb_miss_num              //dtlb miss number
-    event_counters.io.event_signals(35) :=  Mux(io.lsu.perf.tlbMiss, 1.U, 0.U)  //d-tlb miss
-    event_counters.io.event_signals(36) :=  io.lsu.dcache_valid_access   //valid dcache access number
-    event_counters.io.event_signals(37) :=  io.lsu.dcache_nack_num   //d-cache load & store nack number
-    event_counters.io.event_signals(38) :=  Mux(io.lsu.perf.acquire, 1.U, 0.U) //dcache send req to next level number
+    event_counters.io.event_signals(2) :=  PopCount(exe_is_ld.asUInt)       //execute ld number
+    event_counters.io.event_signals(3) :=  PopCount(exe_is_st.asUInt)       //execute st number
+    event_counters.io.event_signals(4) :=  io.lsu.dtlb_valid_access            //valid dtlb req number
+    event_counters.io.event_signals(5) :=  io.lsu.dtlb_miss_num              //dtlb miss number
+    event_counters.io.event_signals(6) :=  Mux(io.lsu.perf.tlbMiss, 1.U, 0.U)  //d-tlb miss
+    event_counters.io.event_signals(7) :=  io.lsu.dcache_valid_access   //valid dcache access number
+    event_counters.io.event_signals(8) :=  io.lsu.dcache_nack_num   //d-cache load & store nack number
+    event_counters.io.event_signals(9) :=  Mux(io.lsu.perf.acquire, 1.U, 0.U) //dcache send req to next level number
 
     // event_counters.io.event_signals(39) :=  PopCount(exe_is_br.asUInt)       //execute br number
     // event_counters.io.event_signals(40) :=  PopCount(exe_is_jalr.asUInt)   //execute jalr number
@@ -602,8 +602,8 @@ class BoomCore(usingTrace: Boolean)(implicit p: Parameters) extends BoomModule
     // event_counters.io.event_signals(45) :=  Mux(exe_misp_ret, 1.U, 0.U)     //exe misp jalr-ret number
     // event_counters.io.event_signals(46) :=  Mux(exe_misp_jalrcall, 1.U, 0.U)  //exe misp jalr-call number
 
-    event_counters.io.event_signals(47) :=  PopCount(com_is_ld.asUInt)       //commit ld number
-    event_counters.io.event_signals(48) :=  PopCount(com_is_st.asUInt)       //commit st number
+    event_counters.io.event_signals(10) :=  PopCount(com_is_ld.asUInt)       //commit ld number
+    event_counters.io.event_signals(11) :=  PopCount(com_is_st.asUInt)       //commit st number
     // event_counters.io.event_signals(49) :=  PopCount(com_is_br.asUInt)       //commit br number
     // event_counters.io.event_signals(50) :=  PopCount(com_is_jalr.asUInt)   //commit jalr number
     // event_counters.io.event_signals(51) :=  PopCount(com_is_ret.asUInt)     //commit jalr-ret number
@@ -613,11 +613,11 @@ class BoomCore(usingTrace: Boolean)(implicit p: Parameters) extends BoomModule
     // event_counters.io.event_signals(55) :=  PopCount(com_misp_ret.asUInt)     //com misp jalr-ret number
     // event_counters.io.event_signals(56) :=  PopCount(com_misp_jalrcall.asUInt)  //com misp jalr-call number
 
-    event_counters.io.event_signals(57) :=  Mux(io.ptw.perf.l2miss, 1.U, 0.U) //L2 TLB miss
-    event_counters.io.event_signals(58) :=  Mux(misalign_excpt, 1.U, 0.U)  //misalign_excpt
-    event_counters.io.event_signals(59) :=  Mux(lstd_pagefault, 1.U, 0.U)  //lstd_pagefault
+    event_counters.io.event_signals(12) :=  Mux(io.ptw.perf.l2miss, 1.U, 0.U) //L2 TLB miss
+    event_counters.io.event_signals(13) :=  Mux(misalign_excpt, 1.U, 0.U)  //misalign_excpt
+    event_counters.io.event_signals(14) :=  Mux(lstd_pagefault, 1.U, 0.U)  //lstd_pagefault
     // event_counters.io.event_signals(60) :=  Mux(fetch_pagefault, 1.U, 0.U)  //fetch_pagefault (not load/store related)
-    event_counters.io.event_signals(61) :=  Mux(mini_exception, 1.U, 0.U)  //mini_exception
+    event_counters.io.event_signals(15) :=  Mux(mini_exception, 1.U, 0.U)  //mini_exception
     // event_counters.io.event_signals(62) :=  Mux(rob.io.commit.rollback, 1.U, 0.U)  //rollback_cycles (not load/store specific)
   }
   
