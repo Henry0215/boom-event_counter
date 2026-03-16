@@ -1,0 +1,94 @@
+{"type": "max_inst", "times": 1, "cycles": 2407497787, "inst": 1319499412}
+{"type": "event  0", "value": 340327855}
+{"type": "event  1", "value": 200006228}
+{"type": "event  2", "value": 214977271}
+{"type": "event  3", "value": 213928168}
+{"type": "event  4", "value": 193328}
+{"type": "event  5", "value": 93517973}
+{"type": "event  6", "value": 93516228}
+{"type": "event  7", "value": 77}
+{"type": "event  8", "value": 339585419}
+{"type": "event  9", "value": 277993}
+{"type": "event 10", "value": 59553}
+{"type": "event 11", "value": 48651}
+{"type": "event 12", "value": 1667581}
+{"type": "event 13", "value": 337348102}
+{"type": "event 14", "value": 1312172}
+{"type": "event 15", "value": 240071203}
+{"type": "event 16", "value": 100067093}
+{"type": "event 17", "value": 189559}
+{"type": "event 18", "value": 0}
+{"type": "event 19", "value": 64843963}
+{"type": "event 20", "value": 229401732}
+{"type": "event 21", "value": 89371138}
+{"type": "event 22", "value": 21554985}
+{"type": "event 23", "value": 319196161}
+{"type": "event 24", "value": 3482021}
+{"type": "event 25", "value": 552351}
+{"type": "event 26", "value": 121999707}
+{"type": "event 27", "value": 237452871}
+{"type": "event 28", "value": 729149}
+{"type": "event 29", "value": 102145835}
+{"type": "event 30", "value": 2094330}
+{"type": "event 31", "value": 53286763}
+{"type": "event 32", "value": 20336362}
+{"type": "event 33", "value": 131438896}
+{"type": "event 34", "value": 38195326}
+{"type": "event 35", "value": 16101798}
+{"type": "event 36", "value": 91277435}
+{"type": "event 37", "value": 6757017}
+{"type": "event 38", "value": 6927001}
+{"type": "event 39", "value": 227152}
+{"type": "event 40", "value": 2749}
+{"type": "event 41", "value": 1813}
+{"type": "event 42", "value": 10}
+{"type": "event 43", "value": 1914}
+{"type": "event 44", "value": 573}
+{"type": "event 45", "value": 58}
+{"type": "event 46", "value": 10}
+{"type": "event 47", "value": 53218846}
+{"type": "event 48", "value": 19789504}
+{"type": "event 49", "value": 223991}
+{"type": "event 50", "value": 2526}
+{"type": "event 51", "value": 1684}
+{"type": "event 52", "value": 0}
+{"type": "event 53", "value": 1785}
+{"type": "event 54", "value": 493}
+{"type": "event 55", "value": 23}
+{"type": "event 56", "value": 0}
+{"type": "event 57", "value": 3969970}
+{"type": "event 58", "value": 0}
+{"type": "event 59", "value": 2428}
+{"type": "event 60", "value": 0}
+{"type": "event 61", "value": 8869}
+{"type": "event 62", "value": 103126}
+{"type": "event 63", "value": 0}
+stack addr: 0x3fdb8829d8
+textinfo: 17
+--- load elf: alloc text memory: (0x204000, 0x2c8000) ---
+sim slice info, start: 1340600000000, simNum: 4098594290, rawLength: 200000000, warmup: 1000000000, exitpc: 0x2078b8, cause: 2
+--- step 1, read npc: 0x20725e ---
+--- step 2, read integer and float registers ---
+--- step 3, read memory range information and do map, range num: 46 ---
+the first load information is saved with data map and compressed by fastlz
+rawsize: 31457560, compsize: 16729002, infonum: 7703
+rawsize: 31459168, compsize: 17848257, infonum: 7654
+rawsize: 31459152, compsize: 17692294, infonum: 7654
+rawsize: 31457792, compsize: 30708590, infonum: 7753
+rawsize: 31459704, compsize: 31279558, infonum: 7753
+rawsize: 31458968, compsize: 30688820, infonum: 7753
+rawsize: 31459704, compsize: 30338884, infonum: 7753
+rawsize: 31458384, compsize: 24407168, infonum: 7712
+rawsize: 8009568, compsize: 228346, infonum: 1918
+--- step 4, read first load infor and init them, first load num: 31823470 ---
+--- step 5, read syscall infor and map to memory, totalcallnum: 9 ---
+--- step 6, init npc to rtemp(5) and takeover_syscall addr to rtemp(6) ---
+--- step 789, save registers data of boot program, set testing program registers, start testing ---
+runLength is set by checkpoint file: 200000000, warmup: 1000000000
+warmup: 1000000000, maxinst: 200000000, period: 1
+running log file: cactusADM/simpoint1_cactusADM_nckpt_1341600000000_len_1200000000_warmup_1000000000_weight61.runlog
+sample function addr: 0x10018b6, sp: 0x107e0f8, s0: 0x107f0f8
+--- exit the last syscall 9, and replace exit pc (0x2078b8) with jmp3 ---
+syscall is overflow, exit.
+test program user running info, cycles: 8073010745, insts: 4475595609
+test program total running info, cycles: 8073077545, insts: 4475621686

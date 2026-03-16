@@ -1,0 +1,86 @@
+{"type": "max_inst", "times": 1, "cycles": 1787035342, "inst": 1264375310}
+{"type": "event  0", "value": 267898600}
+{"type": "event  1", "value": 200002958}
+{"type": "event  2", "value": 184809544}
+{"type": "event  3", "value": 184659936}
+{"type": "event  4", "value": 31263}
+{"type": "event  5", "value": 104873669}
+{"type": "event  6", "value": 104873232}
+{"type": "event  7", "value": 11}
+{"type": "event  8", "value": 265229829}
+{"type": "event  9", "value": 511463}
+{"type": "event 10", "value": 1002490}
+{"type": "event 11", "value": 483025}
+{"type": "event 12", "value": 5056236}
+{"type": "event 13", "value": 256484957}
+{"type": "event 14", "value": 6357407}
+{"type": "event 15", "value": 155867995}
+{"type": "event 16", "value": 106415397}
+{"type": "event 17", "value": 5615208}
+{"type": "event 18", "value": 219}
+{"type": "event 19", "value": 47075012}
+{"type": "event 20", "value": 134444085}
+{"type": "event 21", "value": 84303112}
+{"type": "event 22", "value": 49151403}
+{"type": "event 23", "value": 9555747}
+{"type": "event 24", "value": 637241}
+{"type": "event 25", "value": 7096393}
+{"type": "event 26", "value": 130079370}
+{"type": "event 27", "value": 165999823}
+{"type": "event 28", "value": 3699194}
+{"type": "event 29", "value": 98199583}
+{"type": "event 30", "value": 5536971}
+{"type": "event 31", "value": 47448884}
+{"type": "event 32", "value": 10915573}
+{"type": "event 33", "value": 90224097}
+{"type": "event 34", "value": 25010461}
+{"type": "event 35", "value": 12012604}
+{"type": "event 36", "value": 70156220}
+{"type": "event 37", "value": 13195777}
+{"type": "event 38", "value": 4252917}
+{"type": "event 39", "value": 12620455}
+{"type": "event 40", "value": 310}
+{"type": "event 41", "value": 255}
+{"type": "event 42", "value": 55}
+{"type": "event 43", "value": 459594}
+{"type": "event 44", "value": 138}
+{"type": "event 45", "value": 113}
+{"type": "event 46", "value": 25}
+{"type": "event 47", "value": 44220357}
+{"type": "event 48", "value": 8808545}
+{"type": "event 49", "value": 11267793}
+{"type": "event 50", "value": 265}
+{"type": "event 51", "value": 212}
+{"type": "event 52", "value": 53}
+{"type": "event 53", "value": 426218}
+{"type": "event 54", "value": 130}
+{"type": "event 55", "value": 106}
+{"type": "event 56", "value": 24}
+{"type": "event 57", "value": 3091}
+{"type": "event 58", "value": 0}
+{"type": "event 59", "value": 0}
+{"type": "event 60", "value": 0}
+{"type": "event 61", "value": 2535}
+{"type": "event 62", "value": 25129}
+{"type": "event 63", "value": 0}
+stack addr: 0x3fc9e229f8
+textinfo: 3
+--- load elf: alloc text memory: (0x200000, 0x22c000) ---
+sim slice info, start: 844200000000, simNum: 2508304786, rawLength: 200000000, warmup: 1000000000, exitpc: 0x200a10, cause: 2
+--- step 1, read npc: 0x2047de ---
+--- step 2, read integer and float registers ---
+--- step 3, read memory range information and do map, range num: 86 ---
+the first load information is saved with data map and compressed by fastlz
+rawsize: 5454456, compsize: 4353012, infonum: 1691
+--- step 4, read first load infor and init them, first load num: 664897 ---
+--- step 5, read syscall infor and map to memory, totalcallnum: 0 ---
+--- step 5.1, syscall is zero, replace exitinst with jmp rtemp3 ---: 0x4018013
+--- step 6, init npc to rtemp(5) and takeover_syscall addr to rtemp(6) ---
+--- step 789, save registers data of boot program, set testing program registers, start testing ---
+runLength is set by checkpoint file: 200000000, warmup: 1000000000
+warmup: 1000000000, maxinst: 200000000, period: 1
+running log file: namd/simpoint1_namd_nckpt_845200000000_len_1200000000_warmup_1000000000_weight14.runlog
+sample function addr: 0x10018b6, sp: 0x107e0f8, s0: 0x107f0f8
+syscall is overflow, exit.
+test program user running info, cycles: 3857978856, insts: 2677127482
+test program total running info, cycles: 3857978806, insts: 2677127478
