@@ -37,7 +37,7 @@ CMAP（Cache-line Address Map）是一个按逻辑寄存器索引的地址预测
 | `cmap_valid` | `RegInit(Vec)` | 1 bit | 32 | 表项有效位 |
 | `cmap_processing` | `RegInit(Vec)` | 1 bit | 32 | 正在等待 AGU 回写（Miss 后设置） |
 | `cmap_processing_seq` | `RegInit(Vec)` | 8 bit | 32 | 序列号（防 ABA 问题） |
-| `cmap_last_base` | `Reg(Vec)` | 40 bit | 32 | 基址寄存器值（vaddr - imm） |
+| `cmap_last_base` | `Reg(Vec)` | 40 bit | 32 | 双用途：valid→基址值（vaddr - imm）；processing→累积 ADDI 偏移 |
 
 > 索引方式：Direct-mapped，以 Load/STA 的 `lrs1`（基址逻辑寄存器号）为索引。
 
@@ -60,7 +60,7 @@ CMAP（Cache-line Address Map）是一个按逻辑寄存器索引的地址预测
 
 **CMAP Hit 路径：**
 1. 检查 `cmap_valid(lrs1)` 且无阻塞条件（无全局刷新、无前序寄存器冲突）
-2. 计算 `predicted_vaddr = cmap_last_base(lrs1) + curr_imm + pending_offset`
+2. 计算 `predicted_vaddr = cmap_last_base(lrs1) + curr_imm + same_cycle_offset`
 3. Load：设置 `cmap_addr_ready = true`，在 Dispatch 时绕过 Issue Queue
 4. STA：设置 `sab_vaddr_valid = true`，不绕过 IQ 但提供地址给 SAB 使用
 
@@ -82,7 +82,7 @@ CMAP（Cache-line Address Map）是一个按逻辑寄存器索引的地址预测
 
 | 失效场景 | 范围 | 触发条件 |
 |---------|------|---------|
-| 寄存器重命名失效 | 单条目 | 非 ADDI 自增指令修改 `ldst`（含 seq 递增） |
+| 寄存器重命名失效 | 单条目 | 非 ADDI 自增指令修改 `ldst`（含 seq 递增）；非自增 ADDI 若源寄存器有效则传播而非失效 |
 | 分支误预测 | 全部 32 条目 | `b1.mispredict_mask =/= 0` |
 | Rollback | 全部 32 条目 | `rob.io.commit.rollback` |
 | Exception/Flush | 全部 32 条目 | `rob.io.flush.valid` |
@@ -136,14 +136,14 @@ existing_ready || dis_cmap_override(i)
 
 | 资源类别 | 数量 | 位宽计算 |
 |---------|------|---------|
-| **CMAP 表 Reg** | 32 条目 | `valid(1) + processing(1) + seq(6) + last_base(40) = 48 bit/entry` |
-| **CMAP 表总容量** | | 32 × 48 = **1,536 bit = 192 Byte** |
+| **CMAP 表 Reg** | 32 条目 | `valid(1) + processing(1) + seq(8) + last_base(40) = 50 bit/entry` |
+| **CMAP 表总容量** | | 32 × 50 = **1,600 bit = 200 Byte** |
 | **MicroOp 增量** | 每条 uop | `cmap_addr_ready(1) + cmap_vaddr(40) + cmap_will_update(1) + cmap_seq(6) = 48 bit` |
 | **BrUpdateMasks 增量** | 全局 1 bit | `cmap_flush(1)` |
 | **Decode 组合逻辑** | coreWidth=2 | 每 slot: 40-bit 加法器（vaddr 计算）+ 寄存器冲突检测（无需减法器） |
 | **LSU 回写端口** | memWidth=1 | 复用已有端口，LSU 侧增加 40-bit 减法器（`base = vaddr - imm`） |
 
-**总计新增寄存器**：~1,536 bit = 192 Byte
+**总计新增寄存器**：~1,600 bit = 200 Byte
 
 ### 1.4 性能收益
 
@@ -159,21 +159,27 @@ existing_ready || dis_cmap_override(i)
 
 ---
 
-## 2. 功能二：ADDI 累积偏移优化
+## 2. 功能二：ADDI 偏移融合优化
 
 ### 2.1 设计思想
 
 程序中常见模式：`addi x5, x5, 8; ld x10, 0(x5)` — 基址寄存器通过 ADDI 自增后被 Load 使用。纯 CMAP 无法处理这种情况（ADDI 会导致寄存器值变化，CMAP 条目需失效）。
 
-解决方案：**不失效**，而是将 ADDI 的偏移量累积到 `cmap_pending_offset` 中，Load 在计算预测地址时加上此累积偏移。
+解决方案：**不失效**，而是将 ADDI 的偏移量直接累积到 `cmap_last_base` 中（40-bit 加法），无需独立的偏移寄存器。`cmap_last_base` 在 valid 状态下存储基址值，ADDI 自增时直接更新；在 processing 状态下复用为累积偏移存储（进入 processing 时置 0），LSU 回写时将 AGU 基址与累积偏移相加得到最终基址。
+
+此设计还支持**非自增 ADDI 传播**（如 `addi x5, x6, 8` 和 `mv x5, x6`）：当源寄存器 CMAP 有效时，直接将源基址加偏移传播到目标寄存器的 CMAP 条目。
 
 ### 2.2 具体修改与信号
 
-#### 2.2.1 Pending Offset Buffer (`core.scala`)
+#### 2.2.1 `cmap_last_base` 双用途设计 (`core.scala`)
 
-| 信号名 | 类型 | 宽度 | 条目数 | 说明 |
-|--------|------|------|--------|------|
-| `cmap_pending_offset` | `RegInit(Vec)` | 14 bit (signed) | 32 | 累积 ADDI 偏移 (±8192 范围) |
+| 状态 | `cmap_last_base` 含义 | ADDI 操作 |
+|------|----------------------|-----------|
+| valid | 基址值（vaddr - imm） | 直接加 imm 到 `cmap_last_base`（40-bit 加法） |
+| processing | 累积的 ADDI 偏移（从 0 开始） | 直接加 imm 到 `cmap_last_base`（40-bit 加法） |
+| LSU 回写时 | — | `cmap_last_base = AGU_base + cmap_last_base`（偏移合并） |
+
+无需独立的 `pending_offset` 寄存器，节省 32 × 14 bit = 448 bit 存储。
 
 #### 2.2.2 同周期 ADDI 转发逻辑 (`core.scala`)
 
@@ -182,25 +188,26 @@ existing_ready || dis_cmap_override(i)
 | 信号名 | 类型 | 长度 | 说明 |
 |--------|------|------|------|
 | `addi_same_cycle_offset` | `Wire(Vec)` | (coreWidth+1) × 32 × 15 bit | 前向传播累积偏移 |
-| `addi_same_cycle_overflow` | `Wire(Vec)` | (coreWidth+1) × 32 × 1 bit | 溢出检测标记 |
 | `same_cycle_pending_offsets` | `Wire(Vec)` | (slot+1) × 15 bit | 每 slot 的前序 ADDI 累积偏移 |
 
 #### 2.2.3 ADDI 处理规则
 
 | 场景 | 处理 |
 |------|------|
-| `addi x5, x5, 8`（自增） | 累积到 `cmap_pending_offset(x5)`，**不失效** CMAP |
-| `addi x5, x6, 8`（非自增） | 视为普通寄存器重命名，**失效** `cmap_valid(x5)` |
-| `addiw x5, x5, 8` | **忽略**，不参与优化（32-bit 运算 + 符号扩展，偏移不可预测） |
-| 累积溢出（超过 ±8192） | **失效** CMAP 条目 |
-| processing 状态下的 ADDI | 仍然累积到 `pending_offset`（AGU 回写后使用） |
+| `addi x5, x5, 8`（自增） | 将 imm 加到 `cmap_last_base(x5)`，**不失效** CMAP |
+| `addi x5, x6, 8`（非自增，x6 有效） | **传播**：`cmap_last_base(x5) = cmap_last_base(x6) + imm`，设 `cmap_valid(x5) = true` |
+| `addi x5, x6, 8`（非自增，x6 无效） | **失效** `cmap_valid(x5)` |
+| `mv x5, x6`（即 `addi x5, x6, 0`） | 同非自增 ADDI |
+| `addiw x5, x5, 8` | 同 `addi` 处理（见 ADDIW 说明） |
+| processing 状态下的 ADDI | 累积到 `cmap_last_base`（LSU 回写时合并） |
+
+> **无溢出限制**：ADDI 偏移直接在 40-bit `cmap_last_base` 上运算，利用模运算自动处理有符号偏移，不存在旧方案的 ±8192 范围限制。
 
 #### 2.2.4 地址计算公式
 
 ```
-predicted_vaddr = cmap_last_base(lrs1)              // 基址寄存器值
+predicted_vaddr = cmap_last_base(lrs1)              // 基址值（已含累积 ADDI 偏移）
                 + curr_imm                            // 当前立即数偏移
-                + cmap_pending_offset(lrs1)            // 已累积的 ADDI 偏移
                 + same_cycle_pending_offset             // 同周期前序 ADDI 偏移
 ```
 
@@ -210,20 +217,20 @@ predicted_vaddr = cmap_last_base(lrs1)              // 基址寄存器值
 
 1. **LSU 回写**（最先）— 最低优先级
 2. **Load/STA 处理**（CMAP 查找 + SET_PROCESSING）
-3. **ADDI 偏移累积**
-4. **寄存器失效**（非自增指令修改 ldst）
+3. **ADDI 自增偏移累积**
+4. **寄存器失效 / 非自增 ADDI 传播**
 5. **全局失效**（mispredict/rollback/flush）— 最高优先级
 
 ### 2.3 资源开销分析
 
 | 资源类别 | 数量 | 说明 |
 |---------|------|------|
-| **pending_offset Reg** | 32 × 14 bit = **448 bit** | 每个逻辑寄存器一个 14-bit 有符号累积偏移 |
+| **新增寄存器** | **0 bit** | ADDI 偏移直接融合到 `cmap_last_base`，无额外存储 |
 | **同周期转发逻辑** | coreWidth × 32 × 15 bit Wire | 前向传播链（组合逻辑） |
-| **加法器** | 每 slot 1 个 15-bit 加法器 | ADDI 偏移累积 |
-| **溢出检测** | 每 slot 1-bit 比较 | 14-bit 符号位检查 |
+| **加法器** | 每 slot 1 个 40-bit 加法器 | ADDI 偏移累积（valid 和 processing 状态均为 40-bit 加法） |
+| **非自增 ADDI 传播** | 每 slot 1 个 40-bit 加法器 | 在失效段组合计算新基址 |
 
-**总计新增寄存器**：448 bit = 56 Byte（主要是 Decode 阶段的组合逻辑链前向传播 ADDI 偏移到后续 slot）。
+**总计新增寄存器**：0 bit（相比旧方案节省 448 bit = 56 Byte）。主要代价是 Decode 阶段的 40-bit 加法器（替代旧方案的 15-bit 加法器）。
 
 ### 2.4 性能收益
 
@@ -408,11 +415,11 @@ CMAP + ADDI + SAB + Spec 相对 Baseline 的 SPEC2007 结果：
 
 | 模块 | 新增寄存器 | 主要组合逻辑 |
 |------|-----------|-------------|
-| CMAP 表 | 32 × 48 bit = 1,536 bit | 40-bit 加法器 × coreWidth（Decode）+ 40-bit 减法器 × memWidth（LSU 回写） |
-| ADDI Pending Offset | 32 × 14 bit = 448 bit | 15-bit 前向传播链 × coreWidth |
+| CMAP 表 | 32 × 50 bit = 1,600 bit | 40-bit 加法器 × coreWidth（Decode）+ 40-bit 减法器 × memWidth（LSU 回写）+ 40-bit 加法器（LSU 回写偏移合并） |
+| ADDI 偏移融合 | 0 bit（融合在 cmap_last_base 中） | 40-bit 加法器 × coreWidth（ADDI 累积）+ 15-bit 前向传播链 × coreWidth |
 | SAB 流水线 | 8 × 42 bit = 336 bit | 37-bit CAM 比较器 × 16 |
 | MicroOp 增量 | 54 bit / uop | — |
-| **总计** | **~2,320 bit ≈ 290 Byte** | 加法器 + CAM |
+| **总计** | **~1,936 bit ≈ 242 Byte** | 加法器 + CAM |
 
 ---
 
