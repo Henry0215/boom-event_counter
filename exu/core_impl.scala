@@ -919,69 +919,10 @@ class BoomCore(usingTrace: Boolean)(implicit p: Parameters) extends BoomModule
     mem_sets_which_reg(w) := 0.U
   }
   
-  //-------------------------------------------------------------
-  // CMAP Update from LSU (Lowest Priority)
-  //-------------------------------------------------------------
-  // Process CMAP updates from LSU first, so that invalidation logic can override them
-  // This ensures correct priority: Update < Decode Invalidation < Global Invalidation
-  // 
-  // IMPORTANT: Sequence number validation prevents ABA problem:
-  //   T0: Load1 miss → seq(5)=1
-  //   T1: Flush → processing(5)=false, seq(5) unchanged
-  //   T2: Load2 miss → seq(5)=2 (incremented!)
-  //   T3: Load1 returns with seq=1 → mismatch, reject update
-  //   T4: Load2 returns with seq=2 → match, accept update
-  // 
-  for (w <- 0 until memWidth) {
-    // Handle normal CMAP update (from AGU vaddr)
-    // CRITICAL: Do NOT update if global invalidation is happening this cycle!
-    // This prevents stale updates from racing with invalidation.
-    when (io.lsu.cmap_update_valid(w) && !cmap_global_invalidate) {
-      val lreg = io.lsu.cmap_update_lreg(w)
-      val new_base = io.lsu.cmap_update_base(w)
-      val update_seq = io.lsu.cmap_update_seq(w)
-      
-      // Debug: Always print when update signal arrives (before seq check)
-      printf("[CMAP UPDATE CHECK] C=%d lreg=%d, processing=%d, update_seq=%d, proc_seq=%d, global_inv=%d, misp=%d, rollback=%d, flush=%d\n",
-        debug_tsc_reg, lreg, cmap_processing(lreg), update_seq, cmap_processing_seq(lreg),
-        cmap_global_invalidate, brupdate.b1.mispredict_mask =/= 0.U,
-        rob.io.commit.rollback, rob.io.flush.valid)
-      
-      // Only update if entry was in processing state AND sequence number matches
-      // Sequence check prevents stale updates from overwriting newer state
-      when (cmap_processing(lreg) && update_seq === cmap_processing_seq(lreg)) {
-        // Update CMAP entry: new base = AGU base + accumulated ADDI offset during processing
-        // During processing, cmap_last_base stored the accumulated ADDI offset (starting from 0)
-        val accumulated_offset = cmap_last_base(lreg)
-        cmap_valid(lreg) := true.B
-        cmap_processing(lreg) := false.B
-        cmap_last_base(lreg) := new_base + accumulated_offset
-        
-        printf("[CMAP UPDATE] C=%d lreg=%d, new_base=0x%x, accum_offset=0x%x, final_base=0x%x, update_seq=%d, proc_seq=%d\n",
-          debug_tsc_reg, lreg, new_base, accumulated_offset, new_base + accumulated_offset,
-          update_seq, cmap_processing_seq(lreg))
-      }
-      // Debug: print when update is rejected
-      when (!(cmap_processing(lreg) && update_seq === cmap_processing_seq(lreg))) {
-        printf("[CMAP UPDATE REJECTED] C=%d lreg=%d, processing=%d, update_seq=%d, proc_seq=%d\n",
-          debug_tsc_reg, lreg, cmap_processing(lreg), update_seq, cmap_processing_seq(lreg))
-      }
-    }
-    
-    // Handle uncacheable address: clear processing without updating CMAP data
-    // This prevents CMAP from caching uncacheable addresses
-    when (io.lsu.cmap_clear_processing_valid(w)) {
-      val lreg = io.lsu.cmap_clear_processing_lreg(w)
-      val clear_seq = io.lsu.cmap_clear_processing_seq(w)
-      
-      // Only clear if sequence number matches (prevents stale clears)
-      when (cmap_processing(lreg) && clear_seq === cmap_processing_seq(lreg)) {
-        cmap_processing(lreg) := false.B
-        cmap_last_base(lreg) := 0.U
-        // Do NOT set cmap_valid - entry remains invalid
-      }
-    }
-  }
+  // NOTE: CMAP Update from LSU has been MOVED to after ADDI section
+  // to ensure correct Chisel last-writer-wins priority when LSU update and
+  // same-cycle ADDI both write to cmap_last_base for the same register.
+  // See "CMAP Update from LSU" section below (after ADDI optimization).
   
   // NOTE: Single-Register Invalidation has been MOVED to after Load processing
   // to ensure correct Chisel last-writer-wins priority.
@@ -1217,9 +1158,73 @@ class BoomCore(usingTrace: Boolean)(implicit p: Parameters) extends BoomModule
   }
   
   //-------------------------------------------------------------
+  // CMAP Update from LSU (After ADDI, Before Invalidation)
+  //-------------------------------------------------------------
+  // MUST appear AFTER the ADDI section so that LSU update overrides ADDI's
+  // cmap_last_base write (Chisel last-writer-wins). Without this ordering,
+  // a same-cycle ADDI would override the LSU's new_base, losing the AGU result.
+  //
+  // The LSU update incorporates the current decode-cycle ADDI offset so that
+  // ADDI offsets accumulated during the same cycle as the LSU writeback are
+  // not lost.
+  //
+  // Priority (source order): CMAP hit/miss < ADDI < LSU update < Invalidation < Global Invalidation
+  //
+  // IMPORTANT: Sequence number validation prevents ABA problem:
+  //   T0: Load1 miss → seq(5)=1
+  //   T1: Flush → processing(5)=false, seq(5) unchanged
+  //   T2: Load2 miss → seq(5)=2 (incremented!)
+  //   T3: Load1 returns with seq=1 → mismatch, reject update
+  //   T4: Load2 returns with seq=2 → match, accept update
+  //
+  for (w <- 0 until memWidth) {
+    when (io.lsu.cmap_update_valid(w) && !cmap_global_invalidate) {
+      val lreg = io.lsu.cmap_update_lreg(w)
+      val new_base = io.lsu.cmap_update_base(w)
+      val update_seq = io.lsu.cmap_update_seq(w)
+      
+      printf("[CMAP UPDATE CHECK] C=%d lreg=%d, processing=%d, update_seq=%d, proc_seq=%d, global_inv=%d, misp=%d, rollback=%d, flush=%d\n",
+        debug_tsc_reg, lreg, cmap_processing(lreg), update_seq, cmap_processing_seq(lreg),
+        cmap_global_invalidate, brupdate.b1.mispredict_mask =/= 0.U,
+        rob.io.commit.rollback, rob.io.flush.valid)
+      
+      when (cmap_processing(lreg) && update_seq === cmap_processing_seq(lreg)) {
+        val accumulated_offset = cmap_last_base(lreg)
+        // Include any ADDI offsets from the current decode cycle that the register
+        // read (previous cycle) hasn't captured yet. This is critical when an ADDI
+        // fires in the same cycle as LSU writeback — without this, the ADDI's offset
+        // from the current cycle would be lost.
+        val curr_cycle_addi = addi_same_cycle_offset(coreWidth)(lreg).pad(coreMaxAddrBits).asUInt
+        cmap_valid(lreg) := true.B
+        cmap_processing(lreg) := false.B
+        cmap_last_base(lreg) := new_base + accumulated_offset + curr_cycle_addi
+        
+        printf("[CMAP UPDATE] C=%d lreg=%d, new_base=0x%x, accum_offset=0x%x, curr_addi=0x%x, final_base=0x%x, update_seq=%d, proc_seq=%d\n",
+          debug_tsc_reg, lreg, new_base, accumulated_offset, curr_cycle_addi,
+          new_base + accumulated_offset + curr_cycle_addi,
+          update_seq, cmap_processing_seq(lreg))
+      }
+      when (!(cmap_processing(lreg) && update_seq === cmap_processing_seq(lreg))) {
+        printf("[CMAP UPDATE REJECTED] C=%d lreg=%d, processing=%d, update_seq=%d, proc_seq=%d\n",
+          debug_tsc_reg, lreg, cmap_processing(lreg), update_seq, cmap_processing_seq(lreg))
+      }
+    }
+    
+    when (io.lsu.cmap_clear_processing_valid(w)) {
+      val lreg = io.lsu.cmap_clear_processing_lreg(w)
+      val clear_seq = io.lsu.cmap_clear_processing_seq(w)
+      
+      when (cmap_processing(lreg) && clear_seq === cmap_processing_seq(lreg)) {
+        cmap_processing(lreg) := false.B
+        cmap_last_base(lreg) := 0.U
+      }
+    }
+  }
+
+  //-------------------------------------------------------------
   // CMAP Single-Register Invalidation at Decode Stage
   //-------------------------------------------------------------
-  // NOTE: This MUST be placed AFTER Load processing and ADDI optimization!
+  // NOTE: This MUST be placed AFTER Load processing, ADDI optimization, AND LSU update!
   // Chisel last-writer-wins ensures correct priority when multiple slots write same register.
   //
   // Self-increment ADDI: already handled above, skip here.
