@@ -163,7 +163,7 @@ class BoomCore(usingTrace: Boolean)(implicit p: Parameters) extends BoomModule
   val cmap_valid = RegInit(VecInit(Seq.fill(numLregs)(false.B)))
   val cmap_processing = RegInit(VecInit(Seq.fill(numLregs)(false.B)))  // Entry waiting for AGU update
   val cmap_processing_seq = RegInit(VecInit(Seq.fill(numLregs)(0.U(8.W))))  // Sequence number for ABA prevention (8-bit for safety)
-  val cmap_last_base = Reg(Vec(numLregs, UInt(coreMaxAddrBits.W)))  // Dual-purpose: valid→base value; processing→accumulated ADDI offset
+  val cmap_last_base = RegInit(VecInit(Seq.fill(numLregs)(0.U(coreMaxAddrBits.W))))  // Dual-purpose: valid→base value; processing→accumulated ADDI offset; invalid→always 0
   
   // CMAP performance counter for ADDI optimization
   val cmap_addi_update_cnt = Wire(Vec(coreWidth, Bool()))
@@ -1129,7 +1129,7 @@ class BoomCore(usingTrace: Boolean)(implicit p: Parameters) extends BoomModule
           when (dec_fire(w)) {
             cmap_processing(rs1) := true.B
             cmap_processing_seq(rs1) := new_seq
-            cmap_last_base(rs1) := 0.U  // Reset to 0 for ADDI offset accumulation during processing
+            // cmap_last_base is already 0 (invariant: invalid entries always have base=0)
             printf("[CMAP SET_PROCESSING] C=%d slot=%d rs1=%d new_seq=%d old_seq=%d pc=0x%x rob_idx=%d is_load=%d is_sta=%d\n",
               debug_tsc_reg, w.U, rs1, new_seq, cmap_processing_seq(rs1),
               dec_uops(w).debug_pc, dec_uops(w).rob_idx, is_load, is_sta)
@@ -1195,8 +1195,8 @@ class BoomCore(usingTrace: Boolean)(implicit p: Parameters) extends BoomModule
           val same_cycle_invalidates_lrs1 = if (w == 0) false.B else invalidate_checks.reduce(_ || _)
           
           when (same_cycle_invalidates_lrs1) {
-            // lrs1's CMAP was reset this cycle (CMAP Miss by earlier Load)
-            // cmap_last_base was reset to 0 for offset accumulation, start from imm
+            // lrs1 entered processing this cycle (CMAP Miss by earlier Load/STA)
+            // cmap_last_base is already 0 (invariant), start accumulation from imm
             when (dec_fire(w)) {
               cmap_last_base(lrs1) := imm.pad(coreMaxAddrBits).asUInt
             }
@@ -1238,9 +1238,23 @@ class BoomCore(usingTrace: Boolean)(implicit p: Parameters) extends BoomModule
       // c.mv rd, rs2 → decoded as "add rd, x0, rs2" (uopADD with lrs1=x0)
       val is_cmv = (uop.uopc === uopADD) && (lrs1 === 0.U)
       
+      // Check if an earlier slot in the same cycle modified the source register
+      // (non-self-increment write). If so, the register value read from cmap_valid/cmap_last_base
+      // is stale — must NOT propagate, fall through to invalidation instead.
+      val src_for_propagate = Mux(is_addi, lrs1, Mux(is_cmv, lrs2, 0.U))
+      val earlier_modifies_src = if (w == 0) false.B else {
+        (0 until w).map { i =>
+          val prev = dec_uops(i)
+          val prev_writes_src = dec_valids(i) && prev.ldst_val && prev.ldst === src_for_propagate
+          val is_prev_addi = (prev.uopc === uopADDI) || (prev.uopc === uopADDIW)
+          val prev_is_self_inc = is_prev_addi && (prev.ldst === prev.lrs1)
+          prev_writes_src && !prev_is_self_inc
+        }.reduce(_ || _)
+      }
+
       when (is_self_increment) {
         // Self-increment ADDI: already handled in ADDI section above
-      } .elsewhen (is_addi && ldst =/= 0.U && lrs1 =/= 0.U && cmap_valid(lrs1)) {
+      } .elsewhen (is_addi && ldst =/= 0.U && lrs1 =/= 0.U && !earlier_modifies_src && cmap_valid(lrs1)) {
         // Non-self ADDI with valid source: propagate source CMAP to dest
         val same_cycle_src_offset = addi_same_cycle_offset(w)(lrs1)
         val imm = uop.imm_packed(19, 8).asSInt
@@ -1253,7 +1267,7 @@ class BoomCore(usingTrace: Boolean)(implicit p: Parameters) extends BoomModule
         cmap_processing_seq(ldst) := cmap_processing_seq(ldst) + 1.U
         printf("[CMAP ADDI_PROPAGATE] C=%d slot=%d ldst=%d lrs1=%d src_base=0x%x sc_offset=%d imm=%d new_base=0x%x pc=0x%x\n",
           debug_tsc_reg, w.U, ldst, lrs1, cmap_last_base(lrs1), same_cycle_src_offset, imm, new_base, uop.debug_pc)
-      } .elsewhen (is_cmv && ldst =/= 0.U && lrs2 =/= 0.U && cmap_valid(lrs2)) {
+      } .elsewhen (is_cmv && ldst =/= 0.U && lrs2 =/= 0.U && !earlier_modifies_src && cmap_valid(lrs2)) {
         // c.mv rd, rs2 (add rd, x0, rs2): propagate source CMAP from lrs2 to dest
         val same_cycle_src_offset = addi_same_cycle_offset(w)(lrs2)
         val effective_src_base = cmap_last_base(lrs2) + same_cycle_src_offset.pad(coreMaxAddrBits).asUInt
@@ -1268,6 +1282,7 @@ class BoomCore(usingTrace: Boolean)(implicit p: Parameters) extends BoomModule
         // Other instructions: invalidate dest CMAP entry
         cmap_valid(ldst) := false.B
         cmap_processing(ldst) := false.B
+        cmap_last_base(ldst) := 0.U
         cmap_processing_seq(ldst) := cmap_processing_seq(ldst) + 1.U
         printf("[CMAP REG_INVALIDATE] C=%d slot=%d ldst=%d pc=0x%x uopc=%d old_seq=%d\n",
           debug_tsc_reg, w.U, ldst, uop.debug_pc, uop.uopc, cmap_processing_seq(ldst))
@@ -1290,6 +1305,7 @@ class BoomCore(usingTrace: Boolean)(implicit p: Parameters) extends BoomModule
     for (i <- 0 until numLregs) {
       cmap_valid(i) := false.B
       cmap_processing(i) := false.B
+      cmap_last_base(i) := 0.U
       cmap_processing_seq(i) := cmap_processing_seq(i) + 1.U  // Invalidate all in-flight updates!
     }
     printf("[CMAP INVALIDATE] C=%d Branch mispredict/rollback - b1_misp=%d rollback=%d flush=%d seq10_before=%d\n",
@@ -1303,6 +1319,7 @@ class BoomCore(usingTrace: Boolean)(implicit p: Parameters) extends BoomModule
     for (i <- 0 until numLregs) {
       cmap_valid(i) := false.B
       cmap_processing(i) := false.B
+      cmap_last_base(i) := 0.U
       cmap_processing_seq(i) := cmap_processing_seq(i) + 1.U  // Invalidate all in-flight updates!
     }
     printf("[CMAP INVALIDATE] C=%d Exception/flush - b1_misp=%d rollback=%d flush=%d seq10_before=%d\n",
@@ -1648,12 +1665,12 @@ class BoomCore(usingTrace: Boolean)(implicit p: Parameters) extends BoomModule
       }
       val conflict_from_cross = cross_hits.reduce(_ || _)
 
-      // Priority: higher index = older pipe stage = older STA.
-      // Last-writer-wins: the oldest matching entry's stq_idx is used,
-      // which corresponds to the most program-order-recent conflicting Store.
+      // Find the youngest (most recently dispatched) conflicting Store.
+      // Lower index = younger pipe stage. Reverse iteration so last-writer-wins
+      // selects the smallest matching index (youngest store).
       val cross_conflict_stq_idx = Wire(UInt(stqAddrSz.W))
       cross_conflict_stq_idx := 0.U
-      for (i <- 0 until numSabCrossCycleEntries) {
+      for (i <- (numSabCrossCycleEntries - 1) to 0 by -1) {
         when (cross_hits(i)) {
           cross_conflict_stq_idx := cross_stq_ids(i)
         }
