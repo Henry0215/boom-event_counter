@@ -958,6 +958,9 @@ class BoomCore(usingTrace: Boolean)(implicit p: Parameters) extends BoomModule
     // CRITICAL: Skip LR (Load Reserved) - special memory ordering requirements
     val is_lr = dec_uops(w).mem_cmd === M_XLR
 
+    // CRITICAL: Skip AMO - requires issue queue for atomic read-modify-write execution
+    val is_amo = dec_uops(w).is_amo
+
     // CRITICAL: Skip loads where rd == rs1 (e.g. "ld x10, 8(x10)")
     // Such loads overwrite the base register, invalidating CMAP prediction.
     val is_self_load = is_load && dec_uops(w).ldst_val && (dec_uops(w).ldst === rs1)
@@ -971,9 +974,9 @@ class BoomCore(usingTrace: Boolean)(implicit p: Parameters) extends BoomModule
     }
     
     // Unified entry condition: valid Load or STA, not x0
-    // Load additionally requires: not LR, not self-load
+    // Load additionally requires: not LR, not AMO, not self-load
     val is_cmap_candidate = dec_valids(w) && !rs1_is_x0 && (
-      (is_load && !is_lr && !is_self_load) || is_sta
+      (is_load && !is_lr && !is_amo && !is_self_load) || is_sta
     )
 
     when (is_cmap_candidate) {
