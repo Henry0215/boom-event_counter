@@ -151,8 +151,6 @@ class BoomCore(usingTrace: Boolean)(implicit p: Parameters) extends BoomModule
   // Structure: Direct mapped (32 entries, indexed by logical register)
   //   For each entry, store:
   //     - last_base: The base register value (vaddr - imm) from last access
-  //       Dual-purpose: in processing state, stores accumulated ADDI offset (reset to 0 on miss);
-  //       on LSU writeback, base = AGU_base + accumulated_offset.
   //
   //   Address calculation: predicted_vaddr = last_base + curr_imm + same_cycle_addi_offset
   //   (No subtraction needed — saves a subtractor and 12-bit imm storage per entry)
@@ -163,7 +161,8 @@ class BoomCore(usingTrace: Boolean)(implicit p: Parameters) extends BoomModule
   val cmap_valid = RegInit(VecInit(Seq.fill(numLregs)(false.B)))
   val cmap_processing = RegInit(VecInit(Seq.fill(numLregs)(false.B)))  // Entry waiting for AGU update
   val cmap_processing_seq = RegInit(VecInit(Seq.fill(numLregs)(0.U(8.W))))  // Sequence number for ABA prevention (8-bit for safety)
-  val cmap_last_base = RegInit(VecInit(Seq.fill(numLregs)(0.U(coreMaxAddrBits.W))))  // Dual-purpose: valid→base value; processing→accumulated ADDI offset; invalid→always 0
+  // Dual-purpose: valid → base+accumulated_offset; processing → accumulated ADDI offset; invalid → always 0
+  val cmap_last_base = RegInit(VecInit(Seq.fill(numLregs)(0.U(coreMaxAddrBits.W))))
   
   // CMAP performance counter for ADDI optimization
   val cmap_addi_update_cnt = Wire(Vec(coreWidth, Bool()))
@@ -919,14 +918,10 @@ class BoomCore(usingTrace: Boolean)(implicit p: Parameters) extends BoomModule
     mem_sets_which_reg(w) := 0.U
   }
   
-  // NOTE: CMAP Update from LSU has been MOVED to after ADDI section
-  // to ensure correct Chisel last-writer-wins priority when LSU update and
-  // same-cycle ADDI both write to cmap_last_base for the same register.
-  // See "CMAP Update from LSU" section below (after ADDI optimization).
-  
-  // NOTE: Single-Register Invalidation has been MOVED to after Load processing
-  // to ensure correct Chisel last-writer-wins priority.
-  // See below (after Load processing section).
+  // NOTE: LSU Update section is placed AFTER the ADDI section below.
+  // This ensures correct Chisel last-writer-wins priority: when LSU update and
+  // same-cycle ADDI both write cmap_last_base, LSU's write (which incorporates
+  // the ADDI offset) takes precedence.
 
   for (w <- 0 until coreWidth) {
     // Default: CMAP calculation not available
@@ -958,9 +953,6 @@ class BoomCore(usingTrace: Boolean)(implicit p: Parameters) extends BoomModule
     // CRITICAL: Skip LR (Load Reserved) - special memory ordering requirements
     val is_lr = dec_uops(w).mem_cmd === M_XLR
 
-    // CRITICAL: Skip AMO - requires issue queue for atomic read-modify-write execution
-    val is_amo = dec_uops(w).is_amo
-
     // CRITICAL: Skip loads where rd == rs1 (e.g. "ld x10, 8(x10)")
     // Such loads overwrite the base register, invalidating CMAP prediction.
     val is_self_load = is_load && dec_uops(w).ldst_val && (dec_uops(w).ldst === rs1)
@@ -974,9 +966,9 @@ class BoomCore(usingTrace: Boolean)(implicit p: Parameters) extends BoomModule
     }
     
     // Unified entry condition: valid Load or STA, not x0
-    // Load additionally requires: not LR, not AMO, not self-load
+    // Load additionally requires: not LR, not self-load
     val is_cmap_candidate = dec_valids(w) && !rs1_is_x0 && (
-      (is_load && !is_lr && !is_amo && !is_self_load) || is_sta
+      (is_load && !is_lr && !is_self_load) || is_sta
     )
 
     when (is_cmap_candidate) {
@@ -1025,6 +1017,11 @@ class BoomCore(usingTrace: Boolean)(implicit p: Parameters) extends BoomModule
       val same_cycle_pending_offset = same_cycle_pending_offsets(w)
       
       // Combine all blocking conditions
+      // NOTE: cmap_global_invalidate is NOT included here.
+      // Instructions killed by mispredict/rollback/flush are already handled by
+      // BOOM's precise br_mask kill mechanism — they will never commit.
+      // Including global_invalidate here would needlessly block unrelated
+      // instructions in the same decode cycle, reducing CMAP fast translate hits.
       val cmap_blocked = blocked_by_earlier_rename || blocked_by_current_rename
       
       // DEBUG: Print blocking conditions (Load only, to keep log manageable)
@@ -1073,7 +1070,7 @@ class BoomCore(usingTrace: Boolean)(implicit p: Parameters) extends BoomModule
           when (dec_fire(w)) {
             cmap_processing(rs1) := true.B
             cmap_processing_seq(rs1) := new_seq
-            // cmap_last_base is already 0 (invariant: invalid entries always have base=0)
+            cmap_last_base(rs1) := 0.U  // Reset accumulated offset (invariant: processing starts at 0)
             printf("[CMAP SET_PROCESSING] C=%d slot=%d rs1=%d new_seq=%d old_seq=%d pc=0x%x rob_idx=%d is_load=%d is_sta=%d\n",
               debug_tsc_reg, w.U, rs1, new_seq, cmap_processing_seq(rs1),
               dec_uops(w).debug_pc, dec_uops(w).rob_idx, is_load, is_sta)
@@ -1091,9 +1088,10 @@ class BoomCore(usingTrace: Boolean)(implicit p: Parameters) extends BoomModule
   //-------------------------------------------------------------
   // Process ADDI self-increment instructions: add offset directly to cmap_last_base.
   // This must be done AFTER Load processing to handle same-cycle Load+ADDI.
-  // 
-  // In the new scheme, ADDI offsets are folded into cmap_last_base (40-bit), no separate
-  // pending_offset register needed, and no overflow limit.
+  //
+  // In the fused scheme, ADDI offsets are folded into cmap_last_base directly:
+  //   - No separate pending_offset register needed
+  //   - No 14-bit overflow limit (cmap_last_base is full address width)
   //
   // IMPORTANT: Multiple same-cycle ADDIs must accumulate properly!
   // Example: addi x5,x5,8; addi x5,x5,16; ld x10,0(x5) should update cmap_last_base by 24
@@ -1125,34 +1123,39 @@ class BoomCore(usingTrace: Boolean)(implicit p: Parameters) extends BoomModule
         val lrs1 = uop.lrs1
         val is_self_increment = (ldst === lrs1)
         
-        val lrs1_is_x0 = (lrs1 === 0.U)
+        // Check if any earlier instruction in same cycle set processing for lrs1
+        val invalidate_checks = (0 until w).map { i =>
+          mem_sets_processing(i) && mem_sets_which_reg(i) === lrs1
+        }
+        val same_cycle_invalidates_lrs1 = if (w == 0) false.B else invalidate_checks.reduce(_ || _)
         
-        // Only self-increment ADDI is handled here;
-        // non-self ADDI propagation is handled in the invalidation section below.
+        // Only process ADDI self-increment (ldst == lrs1)
+        // Non-self-increment ADDI is treated as normal instruction and handled by register rename invalidation
+        // CRITICAL: Skip x0 register - it's always 0 and cannot be incremented
+        val lrs1_is_x0 = (lrs1 === 0.U)
         when (is_self_increment && !lrs1_is_x0) {
           val imm = uop.imm_packed(19, 8).asSInt
           
-          // Check if any earlier instruction in same cycle set processing for lrs1
-          val invalidate_checks = (0 until w).map { i =>
-            mem_sets_processing(i) && mem_sets_which_reg(i) === lrs1
-          }
-          val same_cycle_invalidates_lrs1 = if (w == 0) false.B else invalidate_checks.reduce(_ || _)
-          
           when (same_cycle_invalidates_lrs1) {
-            // lrs1 entered processing this cycle (CMAP Miss by earlier Load/STA)
-            // cmap_last_base is already 0 (invariant), start accumulation from imm
+            // Case 1: lrs1 entered processing this cycle (CMAP miss by earlier Load/STA)
+            // cmap_last_base is already 0 (SET_PROCESSING wrote 0), start accumulation from imm
+            // CRITICAL: Only update CMAP registers when instruction actually fires
             when (dec_fire(w)) {
               cmap_last_base(lrs1) := imm.pad(coreMaxAddrBits).asUInt
             }
+            // Update forwarding for later slots (combinational, always compute)
             addi_same_cycle_offset(w+1)(lrs1) := imm.pad(15)
           } .elsewhen (cmap_valid(lrs1) || cmap_processing(lrs1) || addi_same_cycle_offset(w)(lrs1) =/= 0.S) {
-            // Accumulate: add (same_cycle_earlier_offset + imm) directly to cmap_last_base
+            // Case 2: Accumulate offset directly into cmap_last_base
+            // same_cycle_earlier: accumulated offset from earlier ADDIs in this cycle
             val same_cycle_earlier = addi_same_cycle_offset(w)(lrs1)
+            val total_addi = (same_cycle_earlier + imm.pad(15)).pad(coreMaxAddrBits)
+            // CRITICAL: Only update CMAP registers when instruction actually fires
             when (dec_fire(w)) {
-              val total_addi = (same_cycle_earlier + imm.pad(15)).pad(coreMaxAddrBits)
               cmap_last_base(lrs1) := cmap_last_base(lrs1) + total_addi.asUInt
               cmap_addi_update_cnt(w) := true.B
             }
+            // Update forwarding for later slots (combinational, always compute)
             addi_same_cycle_offset(w+1)(lrs1) := same_cycle_earlier + imm.pad(15)
           }
         }
@@ -1168,10 +1171,7 @@ class BoomCore(usingTrace: Boolean)(implicit p: Parameters) extends BoomModule
   // a same-cycle ADDI would override the LSU's new_base, losing the AGU result.
   //
   // The LSU update incorporates the current decode-cycle ADDI offset so that
-  // ADDI offsets accumulated during the same cycle as the LSU writeback are
-  // not lost.
-  //
-  // Priority (source order): CMAP hit/miss < ADDI < LSU update < Invalidation < Global Invalidation
+  // ADDI offsets accumulated during the same cycle as the LSU writeback are not lost.
   //
   // IMPORTANT: Sequence number validation prevents ABA problem:
   //   T0: Load1 miss → seq(5)=1
@@ -1192,20 +1192,17 @@ class BoomCore(usingTrace: Boolean)(implicit p: Parameters) extends BoomModule
         rob.io.commit.rollback, rob.io.flush.valid)
       
       when (cmap_processing(lreg) && update_seq === cmap_processing_seq(lreg)) {
+        // accumulated_offset: ADDI offsets accumulated during processing (previous cycles)
         val accumulated_offset = cmap_last_base(lreg)
-        // Include any ADDI offsets from the current decode cycle that the register
-        // read (previous cycle) hasn't captured yet. This is critical when an ADDI
-        // fires in the same cycle as LSU writeback — without this, the ADDI's offset
-        // from the current cycle would be lost.
+        // curr_cycle_addi: ADDI offsets from current decode cycle (would be lost if not included)
         val curr_cycle_addi = addi_same_cycle_offset(coreWidth)(lreg).pad(coreMaxAddrBits).asUInt
         cmap_valid(lreg) := true.B
         cmap_processing(lreg) := false.B
         cmap_last_base(lreg) := new_base + accumulated_offset + curr_cycle_addi
         
-        printf("[CMAP UPDATE] C=%d lreg=%d, new_base=0x%x, accum_offset=0x%x, curr_addi=0x%x, final_base=0x%x, update_seq=%d, proc_seq=%d\n",
+        printf("[CMAP UPDATE] C=%d lreg=%d, new_base=0x%x, accum=0x%x, curr_addi=0x%x, final=0x%x, seq=%d\n",
           debug_tsc_reg, lreg, new_base, accumulated_offset, curr_cycle_addi,
-          new_base + accumulated_offset + curr_cycle_addi,
-          update_seq, cmap_processing_seq(lreg))
+          new_base + accumulated_offset + curr_cycle_addi, update_seq)
       }
       when (!(cmap_processing(lreg) && update_seq === cmap_processing_seq(lreg))) {
         printf("[CMAP UPDATE REJECTED] C=%d lreg=%d, processing=%d, update_seq=%d, proc_seq=%d\n",
@@ -1219,38 +1216,36 @@ class BoomCore(usingTrace: Boolean)(implicit p: Parameters) extends BoomModule
       
       when (cmap_processing(lreg) && clear_seq === cmap_processing_seq(lreg)) {
         cmap_processing(lreg) := false.B
-        cmap_last_base(lreg) := 0.U
+        cmap_last_base(lreg) := 0.U  // Maintain invariant: invalid → 0
       }
     }
   }
-
+  
   //-------------------------------------------------------------
   // CMAP Single-Register Invalidation at Decode Stage
   //-------------------------------------------------------------
-  // NOTE: This MUST be placed AFTER Load processing, ADDI optimization, AND LSU update!
-  // Chisel last-writer-wins ensures correct priority when multiple slots write same register.
+  // NOTE: This MUST be placed AFTER Load processing and ADDI optimization!
+  // Chisel last-writer-wins: if placed before, Load's SET_PROCESSING on rs1
+  // can override a later-slot instruction's invalidation of the same register.
+  // Example: slot0: ld x10,0(x5) (SET_PROCESSING x5) + slot1: add x5,x5,x6 (invalidate x5)
+  // If invalidation is before Load processing, the SET_PROCESSING overwrites it → bug.
   //
-  // Self-increment ADDI: already handled above, skip here.
-  // Non-self ADDI (addi x5, x6, imm): propagate source CMAP to dest if source is valid.
-  //   This also covers MV (addi x5, x6, 0).
-  // c.mv (add rd, x0, rs2): propagate source CMAP from lrs2 to dest (imm=0).
-  // All other instructions that write a register: invalidate dest CMAP entry.
+  // Exception: ADDI/ADDIW self-increment does NOT invalidate (handled by ADDI optimization above)
+  // CRITICAL: Only update CMAP state when instruction actually fires (dec_fire)
+  // CRITICAL: Must also increment seq to reject any in-flight CMAP updates
   for (w <- 0 until coreWidth) {
     when (dec_fire(w) && dec_uops(w).ldst_val && dec_uops(w).dst_rtype === RT_FIX) {
       val uop = dec_uops(w)
       val ldst = uop.ldst
-      val lrs1 = uop.lrs1
       val is_addi = (uop.uopc === uopADDI) || (uop.uopc === uopADDIW)
-      val is_self_increment = is_addi && (ldst === lrs1)
-
-      when (is_self_increment) {
-        // Self-increment ADDI: already handled in ADDI section above, skip here.
-      } .otherwise {
-        // Other instructions: invalidate dest CMAP entry
+      val is_self_increment = is_addi && (uop.ldst === uop.lrs1)
+      
+      // Only invalidate if NOT ADDI self-increment
+      when (!is_self_increment) {
         cmap_valid(ldst) := false.B
         cmap_processing(ldst) := false.B
-        cmap_last_base(ldst) := 0.U
-        cmap_processing_seq(ldst) := cmap_processing_seq(ldst) + 1.U
+        cmap_last_base(ldst) := 0.U  // Maintain invariant: invalid → 0
+        cmap_processing_seq(ldst) := cmap_processing_seq(ldst) + 1.U  // Reject stale in-flight updates!
         printf("[CMAP REG_INVALIDATE] C=%d slot=%d ldst=%d pc=0x%x uopc=%d old_seq=%d\n",
           debug_tsc_reg, w.U, ldst, uop.debug_pc, uop.uopc, cmap_processing_seq(ldst))
       }
@@ -1272,7 +1267,7 @@ class BoomCore(usingTrace: Boolean)(implicit p: Parameters) extends BoomModule
     for (i <- 0 until numLregs) {
       cmap_valid(i) := false.B
       cmap_processing(i) := false.B
-      cmap_last_base(i) := 0.U
+      cmap_last_base(i) := 0.U  // Maintain invariant: invalid → 0
       cmap_processing_seq(i) := cmap_processing_seq(i) + 1.U  // Invalidate all in-flight updates!
     }
     printf("[CMAP INVALIDATE] C=%d Branch mispredict/rollback - b1_misp=%d rollback=%d flush=%d seq10_before=%d\n",
@@ -1286,7 +1281,7 @@ class BoomCore(usingTrace: Boolean)(implicit p: Parameters) extends BoomModule
     for (i <- 0 until numLregs) {
       cmap_valid(i) := false.B
       cmap_processing(i) := false.B
-      cmap_last_base(i) := 0.U
+      cmap_last_base(i) := 0.U  // Maintain invariant: invalid → 0
       cmap_processing_seq(i) := cmap_processing_seq(i) + 1.U  // Invalidate all in-flight updates!
     }
     printf("[CMAP INVALIDATE] C=%d Exception/flush - b1_misp=%d rollback=%d flush=%d seq10_before=%d\n",
@@ -1632,12 +1627,12 @@ class BoomCore(usingTrace: Boolean)(implicit p: Parameters) extends BoomModule
       }
       val conflict_from_cross = cross_hits.reduce(_ || _)
 
-      // Find the youngest (most recently dispatched) conflicting Store.
-      // Lower index = younger pipe stage. Reverse iteration so last-writer-wins
-      // selects the smallest matching index (youngest store).
+      // Priority: higher index = older pipe stage = older STA.
+      // Last-writer-wins: the oldest matching entry's stq_idx is used,
+      // which corresponds to the most program-order-recent conflicting Store.
       val cross_conflict_stq_idx = Wire(UInt(stqAddrSz.W))
       cross_conflict_stq_idx := 0.U
-      for (i <- (numSabCrossCycleEntries - 1) to 0 by -1) {
+      for (i <- 0 until numSabCrossCycleEntries) {
         when (cross_hits(i)) {
           cross_conflict_stq_idx := cross_stq_ids(i)
         }
