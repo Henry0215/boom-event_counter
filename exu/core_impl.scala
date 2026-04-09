@@ -1258,7 +1258,29 @@ class BoomCore(usingTrace: Boolean)(implicit p: Parameters) extends BoomModule
       }
 
       when (is_self_increment) {
-        // Self-increment ADDI: already handled in ADDI section above
+        // Self-increment ADDI: common case handled in ADDI section above.
+        // However, if an earlier slot in this cycle wrote to the same register
+        // (non-self-increment: e.g. non-self ADDI propagation, c.mv propagation,
+        // or any other instruction), the ADDI section may not have caught it
+        // because cmap_valid was false in the registered state. The earlier slot's
+        // propagation write would stand uncorrected — the self-increment offset
+        // is lost, leaving cmap_last_base stale. Override with invalidation.
+        val earlier_wrote_ldst = if (w == 0) false.B else {
+          (0 until w).map { i =>
+            val prev = dec_uops(i)
+            val prev_is_addi = (prev.uopc === uopADDI) || (prev.uopc === uopADDIW)
+            val prev_is_self_inc = prev_is_addi && (prev.ldst === prev.lrs1)
+            dec_valids(i) && prev.ldst_val && prev.ldst === ldst && !prev_is_self_inc
+          }.reduce(_ || _)
+        }
+        when (earlier_wrote_ldst) {
+          cmap_valid(ldst) := false.B
+          cmap_processing(ldst) := false.B
+          cmap_last_base(ldst) := 0.U
+          cmap_processing_seq(ldst) := cmap_processing_seq(ldst) + 1.U
+          printf("[CMAP SELF_INC_OVERRIDE] C=%d slot=%d ldst=%d pc=0x%x (earlier non-self write detected)\n",
+            debug_tsc_reg, w.U, ldst, uop.debug_pc)
+        }
       } .elsewhen (is_addi && ldst =/= 0.U && lrs1 =/= 0.U && !earlier_modifies_src && cmap_valid(lrs1)) {
         // Non-self ADDI with valid source: propagate source CMAP to dest
         val same_cycle_src_offset = addi_same_cycle_offset(w)(lrs1)
