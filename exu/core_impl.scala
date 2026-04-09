@@ -1240,74 +1240,11 @@ class BoomCore(usingTrace: Boolean)(implicit p: Parameters) extends BoomModule
       val uop = dec_uops(w)
       val ldst = uop.ldst
       val lrs1 = uop.lrs1
-      val lrs2 = uop.lrs2
       val is_addi = (uop.uopc === uopADDI) || (uop.uopc === uopADDIW)
       val is_self_increment = is_addi && (ldst === lrs1)
-      // c.mv rd, rs2 → decoded as "add rd, x0, rs2" (uopADD with lrs1=x0)
-      val is_cmv = (uop.uopc === uopADD) && (lrs1 === 0.U)
-      
-      // Check if an earlier slot in the same cycle modified the source register
-      // (non-self-increment write). If so, the register value read from cmap_valid/cmap_last_base
-      // is stale — must NOT propagate, fall through to invalidation instead.
-      val src_for_propagate = Mux(is_addi, lrs1, Mux(is_cmv, lrs2, 0.U))
-      val earlier_modifies_src = if (w == 0) false.B else {
-        (0 until w).map { i =>
-          val prev = dec_uops(i)
-          val prev_writes_src = dec_valids(i) && prev.ldst_val && prev.ldst === src_for_propagate
-          val is_prev_addi = (prev.uopc === uopADDI) || (prev.uopc === uopADDIW)
-          val prev_is_self_inc = is_prev_addi && (prev.ldst === prev.lrs1)
-          prev_writes_src && !prev_is_self_inc
-        }.reduce(_ || _)
-      }
 
       when (is_self_increment) {
-        // Self-increment ADDI: common case handled in ADDI section above.
-        // However, if an earlier slot in this cycle wrote to the same register
-        // (non-self-increment: e.g. non-self ADDI propagation, c.mv propagation,
-        // or any other instruction), the ADDI section may not have caught it
-        // because cmap_valid was false in the registered state. The earlier slot's
-        // propagation write would stand uncorrected — the self-increment offset
-        // is lost, leaving cmap_last_base stale. Override with invalidation.
-        val earlier_wrote_ldst = if (w == 0) false.B else {
-          (0 until w).map { i =>
-            val prev = dec_uops(i)
-            val prev_is_addi = (prev.uopc === uopADDI) || (prev.uopc === uopADDIW)
-            val prev_is_self_inc = prev_is_addi && (prev.ldst === prev.lrs1)
-            dec_valids(i) && prev.ldst_val && prev.ldst === ldst && !prev_is_self_inc
-          }.reduce(_ || _)
-        }
-        when (earlier_wrote_ldst) {
-          cmap_valid(ldst) := false.B
-          cmap_processing(ldst) := false.B
-          cmap_last_base(ldst) := 0.U
-          cmap_processing_seq(ldst) := cmap_processing_seq(ldst) + 1.U
-          printf("[CMAP SELF_INC_OVERRIDE] C=%d slot=%d ldst=%d pc=0x%x (earlier non-self write detected)\n",
-            debug_tsc_reg, w.U, ldst, uop.debug_pc)
-        }
-      } .elsewhen (is_addi && ldst =/= 0.U && lrs1 =/= 0.U && !earlier_modifies_src && cmap_valid(lrs1)) {
-        // Non-self ADDI with valid source: propagate source CMAP to dest
-        val same_cycle_src_offset = addi_same_cycle_offset(w)(lrs1)
-        val imm = uop.imm_packed(19, 8).asSInt
-        val effective_src_base = cmap_last_base(lrs1) + same_cycle_src_offset.pad(coreMaxAddrBits).asUInt
-        val new_base = effective_src_base + imm.pad(coreMaxAddrBits).asUInt
-        
-        cmap_last_base(ldst) := new_base
-        cmap_valid(ldst) := true.B
-        cmap_processing(ldst) := false.B
-        cmap_processing_seq(ldst) := cmap_processing_seq(ldst) + 1.U
-        printf("[CMAP ADDI_PROPAGATE] C=%d slot=%d ldst=%d lrs1=%d src_base=0x%x sc_offset=%d imm=%d new_base=0x%x pc=0x%x\n",
-          debug_tsc_reg, w.U, ldst, lrs1, cmap_last_base(lrs1), same_cycle_src_offset, imm, new_base, uop.debug_pc)
-      } .elsewhen (is_cmv && ldst =/= 0.U && lrs2 =/= 0.U && !earlier_modifies_src && cmap_valid(lrs2)) {
-        // c.mv rd, rs2 (add rd, x0, rs2): propagate source CMAP from lrs2 to dest
-        val same_cycle_src_offset = addi_same_cycle_offset(w)(lrs2)
-        val effective_src_base = cmap_last_base(lrs2) + same_cycle_src_offset.pad(coreMaxAddrBits).asUInt
-        
-        cmap_last_base(ldst) := effective_src_base
-        cmap_valid(ldst) := true.B
-        cmap_processing(ldst) := false.B
-        cmap_processing_seq(ldst) := cmap_processing_seq(ldst) + 1.U
-        printf("[CMAP CMV_PROPAGATE] C=%d slot=%d ldst=%d lrs2=%d src_base=0x%x sc_offset=%d new_base=0x%x pc=0x%x\n",
-          debug_tsc_reg, w.U, ldst, lrs2, cmap_last_base(lrs2), same_cycle_src_offset, effective_src_base, uop.debug_pc)
+        // Self-increment ADDI: already handled in ADDI section above, skip here.
       } .otherwise {
         // Other instructions: invalidate dest CMAP entry
         cmap_valid(ldst) := false.B
