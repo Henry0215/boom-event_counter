@@ -1070,7 +1070,6 @@ class BoomCore(usingTrace: Boolean)(implicit p: Parameters) extends BoomModule
           when (dec_fire(w)) {
             cmap_processing(rs1) := true.B
             cmap_processing_seq(rs1) := new_seq
-            cmap_last_base(rs1) := 0.U  // Reset accumulated offset (invariant: processing starts at 0)
             printf("[CMAP SET_PROCESSING] C=%d slot=%d rs1=%d new_seq=%d old_seq=%d pc=0x%x rob_idx=%d is_load=%d is_sta=%d\n",
               debug_tsc_reg, w.U, rs1, new_seq, cmap_processing_seq(rs1),
               dec_uops(w).debug_pc, dec_uops(w).rob_idx, is_load, is_sta)
@@ -1139,24 +1138,24 @@ class BoomCore(usingTrace: Boolean)(implicit p: Parameters) extends BoomModule
           when (same_cycle_invalidates_lrs1) {
             // Case 1: lrs1 entered processing this cycle (CMAP miss by earlier Load/STA)
             // cmap_last_base is already 0 (SET_PROCESSING wrote 0), start accumulation from imm
-            // CRITICAL: Only update CMAP registers when instruction actually fires
+            // Forwarding is gated by dec_fire to ensure only committed offsets are visible
+            // to the LSU Update section (prevents double-counting when decode is stalled)
             when (dec_fire(w)) {
               cmap_last_base(lrs1) := imm.pad(coreMaxAddrBits).asUInt
+              addi_same_cycle_offset(w+1)(lrs1) := imm.pad(15)
             }
-            // Update forwarding for later slots (combinational, always compute)
-            addi_same_cycle_offset(w+1)(lrs1) := imm.pad(15)
           } .elsewhen (cmap_valid(lrs1) || cmap_processing(lrs1) || addi_same_cycle_offset(w)(lrs1) =/= 0.S) {
             // Case 2: Accumulate offset directly into cmap_last_base
             // same_cycle_earlier: accumulated offset from earlier ADDIs in this cycle
             val same_cycle_earlier = addi_same_cycle_offset(w)(lrs1)
-            val total_addi = (same_cycle_earlier + imm.pad(15)).pad(coreMaxAddrBits)
-            // CRITICAL: Only update CMAP registers when instruction actually fires
+            val total_addi = (same_cycle_earlier + imm.pad(15)).pad(coreMaxAddrBits).asUInt
+            // Forwarding is gated by dec_fire to ensure only committed offsets are visible
+            // to the LSU Update section (prevents double-counting when decode is stalled)
             when (dec_fire(w)) {
-              cmap_last_base(lrs1) := cmap_last_base(lrs1) + total_addi.asUInt
+              cmap_last_base(lrs1) := (cmap_last_base(lrs1) + total_addi)(coreMaxAddrBits-1, 0)
               cmap_addi_update_cnt(w) := true.B
+              addi_same_cycle_offset(w+1)(lrs1) := same_cycle_earlier + imm.pad(15)
             }
-            // Update forwarding for later slots (combinational, always compute)
-            addi_same_cycle_offset(w+1)(lrs1) := same_cycle_earlier + imm.pad(15)
           }
         }
       }
@@ -1170,8 +1169,9 @@ class BoomCore(usingTrace: Boolean)(implicit p: Parameters) extends BoomModule
   // cmap_last_base write (Chisel last-writer-wins). Without this ordering,
   // a same-cycle ADDI would override the LSU's new_base, losing the AGU result.
   //
-  // The LSU update incorporates the current decode-cycle ADDI offset so that
-  // ADDI offsets accumulated during the same cycle as the LSU writeback are not lost.
+  // curr_cycle_addi captures committed ADDI offsets from the current decode cycle
+  // (addi_same_cycle_offset forwarding is gated by dec_fire, so only fired ADDIs
+  // contribute). This ensures ADDI offsets are not lost when LSU overwrites ADDI.
   //
   // IMPORTANT: Sequence number validation prevents ABA problem:
   //   T0: Load1 miss → seq(5)=1
@@ -1192,17 +1192,18 @@ class BoomCore(usingTrace: Boolean)(implicit p: Parameters) extends BoomModule
         rob.io.commit.rollback, rob.io.flush.valid)
       
       when (cmap_processing(lreg) && update_seq === cmap_processing_seq(lreg)) {
-        // accumulated_offset: ADDI offsets accumulated during processing (previous cycles)
+        // accumulated_offset: ADDI offsets from previous cycles (register read)
         val accumulated_offset = cmap_last_base(lreg)
-        // curr_cycle_addi: ADDI offsets from current decode cycle (would be lost if not included)
+        // curr_cycle_addi: committed ADDI offsets from current decode cycle (dec_fire-gated)
         val curr_cycle_addi = addi_same_cycle_offset(coreWidth)(lreg).pad(coreMaxAddrBits).asUInt
+        val final_base = (new_base + accumulated_offset + curr_cycle_addi)(coreMaxAddrBits-1, 0)
         cmap_valid(lreg) := true.B
         cmap_processing(lreg) := false.B
-        cmap_last_base(lreg) := new_base + accumulated_offset + curr_cycle_addi
+        cmap_last_base(lreg) := final_base
         
         printf("[CMAP UPDATE] C=%d lreg=%d, new_base=0x%x, accum=0x%x, curr_addi=0x%x, final=0x%x, seq=%d\n",
           debug_tsc_reg, lreg, new_base, accumulated_offset, curr_cycle_addi,
-          new_base + accumulated_offset + curr_cycle_addi, update_seq)
+          final_base, update_seq)
       }
       when (!(cmap_processing(lreg) && update_seq === cmap_processing_seq(lreg))) {
         printf("[CMAP UPDATE REJECTED] C=%d lreg=%d, processing=%d, update_seq=%d, proc_seq=%d\n",
