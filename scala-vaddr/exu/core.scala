@@ -1220,33 +1220,83 @@ class BoomCore(usingTrace: Boolean)(implicit p: Parameters) extends BoomModule
   }
 
   //-------------------------------------------------------------
-  // CMAP Single-Register Invalidation at Decode Stage
+  // CMAP Single-Register Invalidation / Propagation at Decode Stage
   //-------------------------------------------------------------
   // NOTE: This MUST be placed AFTER Load processing, ADDI optimization, AND LSU update!
+  // Chisel last-writer-wins ensures correct priority.
   //
-  // Self-increment ADDI: already handled above, skip here.
-  // Non-self ADDI (addi x5, x6, imm): propagate source CMAP to dest if source is valid.
-  //   This also covers MV (addi x5, x6, 0).
-  // c.mv (add rd, x0, rs2): propagate source CMAP from lrs2 to dest (imm=0).
-  // All other instructions that write a register: invalidate dest CMAP entry.
+  // Self-increment ADDI: already handled in ADDI section above, skip here.
+  // Non-self ADDI (addi rd, rs1, imm where rd≠rs1): propagate source CMAP with offset.
+  // c.mv (add rd, x0, rs2  OR  add rd, rs1, x0): propagate non-zero source CMAP.
+  // All other register-writing instructions: invalidate dest CMAP entry.
+  //
+  // Propagation safety checks:
+  //   1. Source must be VALID (from previous cycle register read)
+  //   2. No earlier same-cycle non-self write to source (would invalidate it)
+  //   3. No earlier same-cycle SET_PROCESSING on source
+  //   4. No later same-cycle self-increment ADDI on destination
+  //      (would miss the later offset → wrong prediction)
   for (w <- 0 until coreWidth) {
     when (dec_fire(w) && dec_uops(w).ldst_val && dec_uops(w).dst_rtype === RT_FIX) {
       val uop = dec_uops(w)
       val ldst = uop.ldst
       val lrs1 = uop.lrs1
+      val lrs2 = uop.lrs2
       val is_addi = (uop.uopc === uopADDI) || (uop.uopc === uopADDIW)
+      val is_add  = (uop.uopc === uopADD)
       val is_self_increment = is_addi && (ldst === lrs1)
+      val is_non_self_addi  = is_addi && (ldst =/= lrs1)
+      val is_c_mv = is_add && ((lrs1 === 0.U) || (lrs2 === 0.U))
+
+      val is_propagation = is_non_self_addi || is_c_mv
+      val prop_src = Mux(is_non_self_addi, lrs1, Mux(lrs1 === 0.U, lrs2, lrs1))
+      val prop_imm = Mux(is_non_self_addi, uop.imm_packed(19, 8).asSInt, 0.S(12.W))
+
+      val earlier_invalidates_src = if (w == 0) false.B else (0 until w).map { i =>
+        val pu = dec_uops(i)
+        val pv = dec_valids(i)
+        val pw = pv && pu.ldst_val && pu.ldst === prop_src
+        val pa = (pu.uopc === uopADDI) || (pu.uopc === uopADDIW)
+        val ps = pa && (pu.ldst === pu.lrs1)
+        pw && !ps
+      }.reduce(_ || _)
+
+      val earlier_sets_proc_src = if (w == 0) false.B else (0 until w).map { i =>
+        mem_sets_processing(i) && mem_sets_which_reg(i) === prop_src
+      }.reduce(_ || _)
+
+      val later_self_inc_conflicts = if (w == coreWidth - 1) false.B else (w+1 until coreWidth).map { j =>
+        val nu = dec_uops(j)
+        val nv = dec_valids(j)
+        val na = (nu.uopc === uopADDI) || (nu.uopc === uopADDIW)
+        nv && nu.ldst_val && na && (nu.ldst === nu.lrs1) && (nu.ldst === ldst)
+      }.reduce(_ || _)
+
+      val can_propagate = is_propagation && cmap_valid(prop_src) &&
+                          !earlier_invalidates_src && !earlier_sets_proc_src && !later_self_inc_conflicts
 
       when (is_self_increment) {
-        // Self-increment ADDI: already handled in ADDI section above, skip here.
-      } .otherwise {
-        // Other instructions: invalidate dest CMAP entry
-        cmap_valid(ldst) := false.B
+        // Already handled in ADDI section above
+      } .elsewhen (can_propagate) {
+        val src_base = cmap_last_base(prop_src)
+        val src_same_cycle = addi_same_cycle_offset(w)(prop_src).pad(coreMaxAddrBits).asUInt
+        val imm_ext = prop_imm.pad(coreMaxAddrBits).asUInt
+        cmap_valid(ldst) := true.B
         cmap_processing(ldst) := false.B
-        cmap_last_base(ldst) := 0.U
+        cmap_last_base(ldst) := (src_base + src_same_cycle + imm_ext)(coreMaxAddrBits-1, 0)
         cmap_processing_seq(ldst) := cmap_processing_seq(ldst) + 1.U
-        printf("[CMAP REG_INVALIDATE] C=%d slot=%d ldst=%d pc=0x%x uopc=%d old_seq=%d\n",
-          debug_tsc_reg, w.U, ldst, uop.debug_pc, uop.uopc, cmap_processing_seq(ldst))
+        printf("[CMAP PROPAGATE] C=%d slot=%d ldst=%d src=%d base=0x%x same_cycle=0x%x imm=0x%x final=0x%x pc=0x%x\n",
+          debug_tsc_reg, w.U, ldst, prop_src, src_base, src_same_cycle, imm_ext,
+          (src_base + src_same_cycle + imm_ext)(coreMaxAddrBits-1, 0), uop.debug_pc)
+      } .otherwise {
+        when (!is_self_increment) {
+          cmap_valid(ldst) := false.B
+          cmap_processing(ldst) := false.B
+          cmap_last_base(ldst) := 0.U
+          cmap_processing_seq(ldst) := cmap_processing_seq(ldst) + 1.U
+          printf("[CMAP REG_INVALIDATE] C=%d slot=%d ldst=%d pc=0x%x uopc=%d old_seq=%d\n",
+            debug_tsc_reg, w.U, ldst, uop.debug_pc, uop.uopc, cmap_processing_seq(ldst))
+        }
       }
     }
   }
