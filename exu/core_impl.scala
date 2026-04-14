@@ -704,6 +704,11 @@ class BoomCore(usingTrace: Boolean)(implicit p: Parameters) extends BoomModule
     event_counters.io.event_signals(22) :=  PopCount(cmap_addi_update_cnt.asUInt)       //CMAP ADDI same-page update count
     event_counters.io.event_signals(23) :=  PopCount(cmap_same_cycle_overflow_cnt.asUInt) //CMAP same-cycle ADDI overflow count
     event_counters.io.event_signals(24) :=  Mux(sab_conflict_fired, 1.U, 0.U)              //SAB Store-Load conflict detected count
+
+    event_counters.io.event_signals(26) :=  PopCount(io.lsu.spec_ld_wakeup.map(_.valid))   //spec wakeup total count
+    event_counters.io.event_signals(27) :=  PopCount(io.lsu.spec_ld_wakeup_is_retry.asUInt) //spec wakeup from retry path count
+    event_counters.io.event_signals(28) :=  Mux(io.lsu.ld_miss, 1.U, 0.U)                  //wrong spec wakeup count
+    event_counters.io.event_signals(29) :=  Mux(io.lsu.ld_miss && RegNext(io.lsu.spec_ld_wakeup_is_retry.reduce(_||_)), 1.U, 0.U)  //wrong spec wakeup from retry path count
   }
   
 

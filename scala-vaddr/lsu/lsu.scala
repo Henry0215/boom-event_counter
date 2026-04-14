@@ -137,6 +137,7 @@ class LSUCoreIO(implicit p: Parameters) extends BoomBundle()(p)
 
   // Speculatively tell the IQs that we'll get load data back next cycle
   val spec_ld_wakeup = Output(Vec(memWidth, Valid(UInt(maxPregSz.W))))
+  val spec_ld_wakeup_is_retry = Output(Vec(memWidth, Bool()))
   // Tell the IQs that the load we speculated last cycle was misspeculated
   val ld_miss      = Output(Bool())
 
@@ -1427,6 +1428,7 @@ class LSU(implicit p: Parameters, edge: TLEdgeOut) extends BoomModule()(p)
                                        !mem_spec_wakeup_uop(w).fp_val            &&
                                        mem_spec_wakeup_uop(w).pdst =/= 0.U
     io.core.spec_ld_wakeup(w).bits  := mem_spec_wakeup_uop(w).pdst
+    io.core.spec_ld_wakeup_is_retry(w) := io.core.spec_ld_wakeup(w).valid && fired_load_retry(w)
   }
 
 
