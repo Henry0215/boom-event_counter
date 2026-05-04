@@ -88,6 +88,10 @@ OPT_CMAP_DEC_FAST_TRANS = 20
 OPT_CMAP_VALID_NOT_SAME = 21
 OPT_CMAP_ADDI_UPDATE = 22
 OPT_SAB_CONFLICT = 24
+OPT_SPEC_WAKEUP_TOTAL = 26
+OPT_SPEC_WAKEUP_RETRY = 27
+OPT_SPEC_WAKEUP_WRONG = 28
+OPT_SPEC_WAKEUP_WRONG_RETRY = 29
 
 # Benchmarks to analyze (user-editable, spec07-style list)
 # Use normalized names without numeric prefix.
@@ -317,6 +321,15 @@ def get_dcache_req(data: dict, variant: str, bench: str) -> float | None:
     return get_metric(data, variant, bench, BL_DCACHE_REQ if variant == "baseline" else OPT_DCACHE_REQ)
 
 
+def get_dcache_miss_rate(data: dict, variant: str, bench: str) -> float | None:
+    """D-Cache miss-rate proxy: L2 request count / D-Cache valid access count."""
+    dcache_req = get_dcache_req(data, variant, bench)
+    dcache_valid = get_dcache_valid(data, variant, bench)
+    if dcache_req is not None and dcache_valid is not None and dcache_valid > 0:
+        return dcache_req / dcache_valid * 100
+    return None
+
+
 def get_l2_tlb_miss(data: dict, variant: str, bench: str) -> float | None:
     return get_metric(data, variant, bench, BL_L2_TLB_MISS if variant == "baseline" else OPT_L2_TLB_MISS)
 
@@ -343,6 +356,30 @@ def get_cmap_fast_trans(data: dict, variant: str, bench: str) -> float | None:
     if variant == "baseline":
         return None
     return get_metric(data, variant, bench, OPT_CMAP_FAST_TRANS)
+
+
+def get_spec_wakeup_total(data: dict, variant: str, bench: str) -> float | None:
+    if variant == "baseline":
+        return None
+    return get_metric(data, variant, bench, OPT_SPEC_WAKEUP_TOTAL)
+
+
+def get_spec_wakeup_retry(data: dict, variant: str, bench: str) -> float | None:
+    if variant == "baseline":
+        return None
+    return get_metric(data, variant, bench, OPT_SPEC_WAKEUP_RETRY)
+
+
+def get_spec_wakeup_wrong(data: dict, variant: str, bench: str) -> float | None:
+    if variant == "baseline":
+        return None
+    return get_metric(data, variant, bench, OPT_SPEC_WAKEUP_WRONG)
+
+
+def get_spec_wakeup_wrong_retry(data: dict, variant: str, bench: str) -> float | None:
+    if variant == "baseline":
+        return None
+    return get_metric(data, variant, bench, OPT_SPEC_WAKEUP_WRONG_RETRY)
 
 
 def percent_change(bl: float | None, cur: float | None) -> float | None:
@@ -581,6 +618,157 @@ def plot_sab_conflict(data: dict, benches: list[str], output_path: Path) -> None
     plt.close(fig)
 
 
+def plot_dcache_miss_rate(data: dict, benches: list[str], output_path: Path) -> None:
+    """Bar chart: D-Cache miss-rate proxy difference vs baseline (percentage points)."""
+    if not HAS_PLOTTING:
+        print(f"[WARN] matplotlib not available, skip {output_path.name}")
+        return
+
+    fig, ax = plt.subplots(figsize=(20, 7))
+    x = list(range(len(benches)))
+    labels = [normalize_bench_name(b) for b in benches]
+    width = 0.15
+    offsets = [i - len(OPT_VARIANTS) / 2 + 0.5 for i in range(len(OPT_VARIANTS))]
+
+    for i, v in enumerate(OPT_VARIANTS):
+        diffs = []
+        for b in benches:
+            bl_rate = get_dcache_miss_rate(data, "baseline", b)
+            opt_rate = get_dcache_miss_rate(data, v, b)
+            diffs.append((opt_rate - bl_rate) if (bl_rate is not None and opt_rate is not None) else 0.0)
+        xpos = [xi + offsets[i] * width for xi in x]
+        ax.bar(xpos, diffs, width, label=VARIANT_LABELS[v], color=COLORS[v], edgecolor="white", linewidth=0.5)
+
+    ax.set_xlabel("Benchmark", fontsize=12)
+    ax.set_ylabel("D-Cache Miss Rate Difference vs Baseline (pp)", fontsize=12)
+    ax.set_title("SPEC2017 D-Cache Miss Rate Proxy Difference vs Baseline", fontsize=14)
+    ax.set_xticks(x)
+    ax.set_xticklabels(labels, rotation=45, ha="right", fontsize=9)
+    ax.axhline(y=0, color="black", linewidth=0.8)
+    ax.legend(loc="upper left", fontsize=9)
+    ax.grid(axis="y", alpha=0.3)
+    plt.tight_layout()
+    fig.savefig(output_path, dpi=150)
+    plt.close(fig)
+
+
+def plot_mini_excpt_absolute(data: dict, benches: list[str], output_path: Path) -> None:
+    """Bar chart: mini_exception absolute count for baseline and optimized variants."""
+    if not HAS_PLOTTING:
+        print(f"[WARN] matplotlib not available, skip {output_path.name}")
+        return
+
+    all_variants = ["baseline"] + OPT_VARIANTS
+    variant_colors = {"baseline": "#7f7f7f", **COLORS}
+
+    fig, ax = plt.subplots(figsize=(20, 7))
+    x = list(range(len(benches)))
+    labels = [normalize_bench_name(b) for b in benches]
+    width = 0.13
+    offsets = [i - len(all_variants) / 2 + 0.5 for i in range(len(all_variants))]
+
+    for i, v in enumerate(all_variants):
+        vals = []
+        for b in benches:
+            val = get_mini_exception(data, v, b)
+            vals.append(val / 1e6 if val is not None else 0.0)
+        xpos = [xi + offsets[i] * width for xi in x]
+        ax.bar(xpos, vals, width, label=VARIANT_LABELS[v], color=variant_colors[v], edgecolor="white", linewidth=0.5)
+
+    ax.set_xlabel("Benchmark", fontsize=12)
+    ax.set_ylabel("Mini Exception Count (Millions)", fontsize=12)
+    ax.set_title("SPEC2017 Mini Exception Absolute Count", fontsize=14)
+    ax.set_xticks(x)
+    ax.set_xticklabels(labels, rotation=45, ha="right", fontsize=9)
+    ax.legend(loc="upper left", fontsize=9)
+    ax.grid(axis="y", alpha=0.3)
+    plt.tight_layout()
+    fig.savefig(output_path, dpi=150)
+    plt.close(fig)
+
+
+def plot_sab_conflict_ratio(data: dict, benches: list[str], output_path: Path) -> None:
+    """Bar chart: SAB conflict ratio = conflict / (conflict + mini_exception) for sab/spec variants."""
+    if not HAS_PLOTTING:
+        print(f"[WARN] matplotlib not available, skip {output_path.name}")
+        return
+
+    sab_variants = ["sab", "spec"]
+    fig, ax = plt.subplots(figsize=(20, 7))
+    x = list(range(len(benches)))
+    labels = [normalize_bench_name(b) for b in benches]
+    width = 0.25
+    offsets = [i - len(sab_variants) / 2 + 0.5 for i in range(len(sab_variants))]
+
+    for i, v in enumerate(sab_variants):
+        ratios = []
+        for b in benches:
+            conflict = get_metric(data, v, b, OPT_SAB_CONFLICT)
+            excpt = get_mini_exception(data, v, b)
+            if conflict is not None and excpt is not None and (conflict + excpt) > 0:
+                ratios.append(conflict / (conflict + excpt) * 100)
+            else:
+                ratios.append(0.0)
+        xpos = [xi + offsets[i] * width for xi in x]
+        ax.bar(xpos, ratios, width, label=VARIANT_LABELS[v], color=COLORS[v], edgecolor="white", linewidth=0.5)
+
+    ax.set_xlabel("Benchmark", fontsize=12)
+    ax.set_ylabel("SAB Conflict Ratio in (Conflict + Exceptions) (%)", fontsize=12)
+    ax.set_title("SPEC2017 SAB Runtime Ratio: conflict / (conflict + mini_exception)", fontsize=14)
+    ax.set_xticks(x)
+    ax.set_xticklabels(labels, rotation=45, ha="right", fontsize=9)
+    ax.legend(loc="upper left", fontsize=9)
+    ax.grid(axis="y", alpha=0.3)
+    plt.tight_layout()
+    fig.savefig(output_path, dpi=150)
+    plt.close(fig)
+
+
+def plot_spec_wakeup_ratios(data: dict, benches: list[str], output_path: Path) -> None:
+    """Bar chart: spec wakeup retry/error ratios for spec variant."""
+    if not HAS_PLOTTING:
+        print(f"[WARN] matplotlib not available, skip {output_path.name}")
+        return
+
+    fig, ax = plt.subplots(figsize=(20, 7))
+    x = list(range(len(benches)))
+    labels = [normalize_bench_name(b) for b in benches]
+    width = 0.2
+    offsets = [-1.5 * width, -0.5 * width, 0.5 * width, 1.5 * width]
+
+    retry_ratios = []
+    wrong_in_wrong_total_ratios = []
+    wrong_in_total_ratios = []
+    wrong_retry_ratios = []
+
+    for b in benches:
+        total = get_spec_wakeup_total(data, "spec", b)
+        retry = get_spec_wakeup_retry(data, "spec", b)
+        wrong = get_spec_wakeup_wrong(data, "spec", b)
+        wrong_retry = get_spec_wakeup_wrong_retry(data, "spec", b)
+
+        retry_ratios.append((retry / total * 100) if (total and retry is not None and total > 0) else 0.0)
+        wrong_in_wrong_total_ratios.append((wrong_retry / wrong * 100) if (wrong and wrong_retry is not None and wrong > 0) else 0.0)
+        wrong_in_total_ratios.append((wrong / total * 100) if (total and wrong is not None and total > 0) else 0.0)
+        wrong_retry_ratios.append((wrong_retry / retry * 100) if (retry and wrong_retry is not None and retry > 0) else 0.0)
+
+    ax.bar([xi + offsets[0] for xi in x], retry_ratios, width, label="Retry / Total Wakeup (%)", color="#1f77b4", edgecolor="white", linewidth=0.5)
+    ax.bar([xi + offsets[1] for xi in x], wrong_in_wrong_total_ratios, width, label="Wrong Retry / Total Wrong Wakeup (%)", color="#ff7f0e", edgecolor="white", linewidth=0.5)
+    ax.bar([xi + offsets[2] for xi in x], wrong_in_total_ratios, width, label="Wrong / Total Wakeup (%)", color="#d62728", edgecolor="white", linewidth=0.5)
+    ax.bar([xi + offsets[3] for xi in x], wrong_retry_ratios, width, label="Wrong Retry / Retry (%)", color="#9467bd", edgecolor="white", linewidth=0.5)
+
+    ax.set_xlabel("Benchmark", fontsize=12)
+    ax.set_ylabel("Ratio (%)", fontsize=12)
+    ax.set_title("SPEC2017 Spec Wakeup Retry/Error Ratios (Spec Variant)", fontsize=14)
+    ax.set_xticks(x)
+    ax.set_xticklabels(labels, rotation=45, ha="right", fontsize=9)
+    ax.legend(loc="upper left", fontsize=9)
+    ax.grid(axis="y", alpha=0.3)
+    plt.tight_layout()
+    fig.savefig(output_path, dpi=150)
+    plt.close(fig)
+
+
 def print_summary(data: dict, benches: list[str]) -> None:
     print("\n" + "=" * 120)
     print("SPEC2017 New Logset: IPC Change vs Baseline (%)")
@@ -719,10 +907,14 @@ def main() -> None:
             extractor_map[extractor_name],
         )
 
+    plot_dcache_miss_rate(data, benches, out_dir / "4c_dcache_miss_rate.png")
+    plot_mini_excpt_absolute(data, benches, out_dir / "5a_mini_excpt_absolute.png")
     plot_cmap_fast_trans(data, benches, out_dir / "8_cmap_fast_translate.png")
     plot_cmap_detail(data, benches, out_dir / "9_cmap_detail_addi.png", variant="addi")
     plot_cmap_accel_ratio(data, benches, out_dir / "10_cmap_accel_ratio.png")
     plot_sab_conflict(data, benches, out_dir / "11_sab_conflict.png")
+    plot_sab_conflict_ratio(data, benches, out_dir / "11a_sab_conflict_ratio.png")
+    plot_spec_wakeup_ratios(data, benches, out_dir / "12_spec_wakeup_ratios.png")
 
     print(f"\n[OK] CSV  : {out_dir / 'spec2017_newset_summary.csv'}")
     if HAS_PLOTTING:
