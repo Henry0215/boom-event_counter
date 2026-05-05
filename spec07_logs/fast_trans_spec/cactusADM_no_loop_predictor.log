@@ -1,34 +1,34 @@
-{"type": "max_inst", "times": 1, "cycles": 2441923968, "inst": 1320563154}
-{"type": "event  0", "value": 345414250}
-{"type": "event  1", "value": 200006279}
-{"type": "event  2", "value": 10589120}
-{"type": "event  3", "value": 21445922}
-{"type": "event  4", "value": 128594021}
-{"type": "event  5", "value": 33787032}
-{"type": "event  6", "value": 15733657}
-{"type": "event  7", "value": 91778904}
-{"type": "event  8", "value": 6614051}
-{"type": "event  9", "value": 7113552}
+{"type": "max_inst", "times": 1, "cycles": 2444866566, "inst": 1321046061}
+{"type": "event  0", "value": 345252079}
+{"type": "event  1", "value": 200006262}
+{"type": "event  2", "value": 10589487}
+{"type": "event  3", "value": 21444784}
+{"type": "event  4", "value": 128548274}
+{"type": "event  5", "value": 33786552}
+{"type": "event  6", "value": 15738648}
+{"type": "event  7", "value": 91794437}
+{"type": "event  8", "value": 6650139}
+{"type": "event  9", "value": 7113853}
 {"type": "event 10", "value": 53218846}
 {"type": "event 11", "value": 19789504}
-{"type": "event 12", "value": 4330632}
+{"type": "event 12", "value": 4330396}
 {"type": "event 13", "value": 0}
 {"type": "event 14", "value": 2428}
-{"type": "event 15", "value": 14569}
-{"type": "event 16", "value": 42719092}
-{"type": "event 17", "value": 652305}
+{"type": "event 15", "value": 14431}
+{"type": "event 16", "value": 42718200}
+{"type": "event 17", "value": 652105}
 {"type": "event 18", "value": 0}
-{"type": "event 19", "value": 32602563}
-{"type": "event 20", "value": 114574801}
+{"type": "event 19", "value": 32599714}
+{"type": "event 20", "value": 114561172}
 {"type": "event 21", "value": 0}
-{"type": "event 22", "value": 15247}
+{"type": "event 22", "value": 15266}
 {"type": "event 23", "value": 0}
 {"type": "event 24", "value": 8}
-{"type": "event 25", "value": 152021}
-{"type": "event 26", "value": 0}
-{"type": "event 27", "value": 0}
-{"type": "event 28", "value": 0}
-{"type": "event 29", "value": 0}
+{"type": "event 25", "value": 149897}
+{"type": "event 26", "value": 11623707}
+{"type": "event 27", "value": 11611117}
+{"type": "event 28", "value": 3444871}
+{"type": "event 29", "value": 3433329}
 {"type": "event 30", "value": 0}
 {"type": "event 31", "value": 0}
 {"type": "event 32", "value": 0}
@@ -63,7 +63,7 @@
 {"type": "event 61", "value": 0}
 {"type": "event 62", "value": 0}
 {"type": "event 63", "value": 0}
-stack addr: 0x3fe53e39d8
+stack addr: 0x3ff4fea9d8
 textinfo: 17
 --- load elf: alloc text memory: (0x204000, 0x2c8000) ---
 sim slice info, start: 1340600000000, simNum: 4098594290, rawLength: 200000000, warmup: 1000000000, exitpc: 0x2078b8, cause: 2
@@ -90,5 +90,5 @@ running log file: cactusADM/simpoint1_cactusADM_nckpt_1341600000000_len_12000000
 sample function addr: 0x10018b6, sp: 0x107e0f8, s0: 0x107f0f8
 --- exit the last syscall 9, and replace exit pc (0x2078b8) with jmp3 ---
 syscall is overflow, exit.
-test program user running info, cycles: 8186909186, insts: 4479325246
-test program total running info, cycles: 8186975778, insts: 4479351323
+test program user running info, cycles: 8198054164, insts: 4481324553
+test program total running info, cycles: 8198137362, insts: 4481357323

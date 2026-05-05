@@ -1,34 +1,34 @@
-{"type": "max_inst", "times": 1, "cycles": 2706908026, "inst": 1297143380}
-{"type": "event  0", "value": 412301619}
-{"type": "event  1", "value": 200004597}
-{"type": "event  2", "value": 52029849}
-{"type": "event  3", "value": 51205781}
-{"type": "event  4", "value": 208879705}
-{"type": "event  5", "value": 69849890}
-{"type": "event  6", "value": 31365852}
-{"type": "event  7", "value": 125801897}
-{"type": "event  8", "value": 12285952}
-{"type": "event  9", "value": 6064577}
-{"type": "event 10", "value": 63288695}
+{"type": "max_inst", "times": 1, "cycles": 2778273887, "inst": 1329357264}
+{"type": "event  0", "value": 412116681}
+{"type": "event  1", "value": 200004604}
+{"type": "event  2", "value": 49453339}
+{"type": "event  3", "value": 51264880}
+{"type": "event  4", "value": 208177073}
+{"type": "event  5", "value": 69143636}
+{"type": "event  6", "value": 31345370}
+{"type": "event  7", "value": 125283683}
+{"type": "event  8", "value": 12164059}
+{"type": "event  9", "value": 6058260}
+{"type": "event 10", "value": 63288694}
 {"type": "event 11", "value": 30625098}
-{"type": "event 12", "value": 653753}
+{"type": "event 12", "value": 649430}
 {"type": "event 13", "value": 0}
 {"type": "event 14", "value": 0}
-{"type": "event 15", "value": 1136789}
-{"type": "event 16", "value": 30426723}
-{"type": "event 17", "value": 8543621}
+{"type": "event 15", "value": 1128938}
+{"type": "event 16", "value": 32954000}
+{"type": "event 17", "value": 7565556}
 {"type": "event 18", "value": 0}
-{"type": "event 19", "value": 48411913}
-{"type": "event 20", "value": 149337342}
+{"type": "event 19", "value": 46132322}
+{"type": "event 20", "value": 155358412}
 {"type": "event 21", "value": 0}
-{"type": "event 22", "value": 8645296}
+{"type": "event 22", "value": 8699951}
 {"type": "event 23", "value": 0}
-{"type": "event 24", "value": 130454}
-{"type": "event 25", "value": 12057648}
-{"type": "event 26", "value": 0}
-{"type": "event 27", "value": 0}
-{"type": "event 28", "value": 0}
-{"type": "event 29", "value": 0}
+{"type": "event 24", "value": 153774}
+{"type": "event 25", "value": 11989592}
+{"type": "event 26", "value": 60865804}
+{"type": "event 27", "value": 37684753}
+{"type": "event 28", "value": 34118387}
+{"type": "event 29", "value": 15931441}
 {"type": "event 30", "value": 0}
 {"type": "event 31", "value": 0}
 {"type": "event 32", "value": 0}
@@ -63,7 +63,7 @@
 {"type": "event 61", "value": 0}
 {"type": "event 62", "value": 0}
 {"type": "event 63", "value": 0}
-stack addr: 0x3fe07199e8
+stack addr: 0x3fdafdf9e8
 textinfo: 27
 --- load elf: alloc text memory: (0x200000, 0x2e0000) ---
 sim slice info, start: 738800000000, simNum: 1319907628, rawLength: 200000000, warmup: 1000000000, exitpc: 0x295980, cause: 2
@@ -82,5 +82,5 @@ running log file: povray/simpoint1_povray_nckpt_739800000000_len_1200000000_warm
 sample function addr: 0x10018b6, sp: 0x107e0f8, s0: 0x107f0f8
 --- exit the last syscall 51, and replace exit pc (0x295980) with jmp3 ---
 syscall is overflow, exit.
-test program user running info, cycles: 2975819849, insts: 1427984826
-test program total running info, cycles: 2976198921, insts: 1428132786
+test program user running info, cycles: 3046581691, insts: 1459939410
+test program total running info, cycles: 3046977573, insts: 1460094109

@@ -1,0 +1,383 @@
+Loading SPEC2006 benchmark data...
+  baseline: 5 run(s) from ['baseline_logs', 'baseline_logs_1', 'baseline_logs_2', 'baseline_logs_3', 'baseline_logs_4']
+  no_addi: 3 run(s) from ['fast_trans_no_addi', 'fast_trans_no_addi_1', 'fast_trans_no_addi_2']
+  addi: 3 run(s) from ['fast_trans_addi', 'fast_trans_addi_1', 'fast_trans_addi_2']
+  sab: 3 run(s) from ['fast_trans_sab', 'fast_trans_sab_1', 'fast_trans_sab_2']
+  spec: 2 run(s) from ['fast_trans_spec', 'fast_trans_spec_1']
+
+========================================================================================================================
+SPEC2006 Performance Summary
+========================================================================================================================
+
+--- IPC ---
+Benchmark           Baseline   Tracing_Map  Tracing_Map+ADDI  Tracing_Map+ADDI+SAB  Tracing_Map+ADDI+SAB+Spec
+astar                 0.5485        0.5666        0.5960        0.5960        0.6008
+bwaves                0.2811        0.2808        0.2811        0.2811        0.2810
+bzip2                 0.6685        0.6906        0.6916        0.7069        0.7350
+calculix              1.4599        1.4574        1.4604        1.4630        1.4648
+dealII                0.8733        0.9438        0.9337        0.9337        0.9338
+gcc                   0.5445        0.5468        0.5478        0.5493        0.5528
+gobmk                 0.6504        0.6532        0.6529        0.6532        0.6575
+h264ref               0.7696        0.7393        0.7458        0.7689        0.7871
+lbm                   0.3849        0.3958        0.3956        0.3957        0.3955
+leslie3d              0.4598        0.4663        0.4657        0.4657        0.4656
+libquantum            0.4967        0.4967        0.4969        0.4969        0.4974
+milc                  0.6090        0.6230        0.6265        0.6264        0.6264
+namd                  0.7465        0.7516        0.7511        0.7512        0.7553
+omnetpp               0.3557        0.3557        0.3567        0.3621        0.3636
+povray                0.4828        0.4861        0.4869        0.4874        0.4851
+sjeng                 0.7794        0.7830        0.7836        0.7838        0.7882
+xalancbmk             0.4918        0.4942        0.4971        0.4978        0.4986
+GEOMEAN               0.5797        0.5864        0.5888        0.5914        0.5948
+
+--- IPC Change vs Baseline (%) ---
+Benchmark        Tracing_Map  Tracing_Map+ADDI  Tracing_Map+ADDI+SAB  Tracing_Map+ADDI+SAB+Spec
+astar                 +3.30%        +8.66%        +8.66%        +9.53%
+bwaves                -0.10%        -0.00%        +0.00%        -0.03%
+bzip2                 +3.30%        +3.45%        +5.75%        +9.94%
+calculix              -0.17%        +0.04%        +0.21%        +0.34%
+dealII                +8.07%        +6.92%        +6.91%        +6.93%
+gcc                   +0.42%        +0.61%        +0.88%        +1.51%
+gobmk                 +0.43%        +0.39%        +0.43%        +1.10%
+h264ref               -3.94%        -3.09%        -0.09%        +2.28%
+lbm                   +2.83%        +2.79%        +2.82%        +2.77%
+leslie3d              +1.41%        +1.28%        +1.27%        +1.26%
+libquantum            -0.01%        +0.04%        +0.03%        +0.14%
+milc                  +2.30%        +2.87%        +2.86%        +2.86%
+namd                  +0.67%        +0.60%        +0.62%        +1.18%
+omnetpp               +0.01%        +0.30%        +1.81%        +2.24%
+povray                +0.69%        +0.85%        +0.96%        +0.48%
+sjeng                 +0.46%        +0.54%        +0.56%        +1.13%
+xalancbmk             +0.49%        +1.07%        +1.22%        +1.37%
+GEOMEAN               +1.16%        +1.57%        +2.02%        +2.60%
+
+--- DTLB Miss Change vs Baseline (%) ---
+Benchmark        Tracing_Map  Tracing_Map+ADDI  Tracing_Map+ADDI+SAB  Tracing_Map+ADDI+SAB+Spec
+astar                 -9.82%       -18.03%       -18.07%       -15.39%
+bwaves                -0.52%        -0.51%        -0.50%        -0.43%
+bzip2                -13.84%       -14.91%       -15.78%       -16.73%
+calculix              -9.80%       -12.66%       -16.47%       -16.26%
+dealII               -23.48%       -23.72%       -23.72%       -23.21%
+gcc                   -2.31%        -6.37%        -6.47%        -6.74%
+gobmk                 -3.31%        -6.93%        -7.01%        -7.30%
+h264ref               +0.82%        -1.49%        -5.04%       -11.41%
+lbm                   -4.37%        -7.82%        -7.83%        -7.81%
+leslie3d              -0.73%        -6.06%        -6.02%        -5.03%
+libquantum            -8.74%       -62.81%       -62.74%       -62.72%
+milc                  -8.69%        -8.23%        -8.38%        -8.57%
+namd                  -5.67%        -6.28%        -6.30%        -5.97%
+omnetpp               -1.84%        -5.63%        -7.38%        -7.58%
+povray                -5.68%       -10.50%       -10.49%        -8.81%
+sjeng                 -4.41%        -6.29%        -6.21%        -5.33%
+xalancbmk             -2.25%        -7.71%        -7.99%        -8.09%
+
+--- DTLB Valid Access Change vs Baseline (%) ---
+Benchmark        Tracing_Map  Tracing_Map+ADDI  Tracing_Map+ADDI+SAB  Tracing_Map+ADDI+SAB+Spec
+astar                 -3.67%        -7.14%        -7.14%        -6.94%
+bwaves                -0.29%        -0.28%        -0.28%        -0.20%
+bzip2                 -4.74%        -4.57%        -6.03%        -8.28%
+calculix              +0.12%        -0.02%        -0.38%        -0.32%
+dealII               -10.05%        -9.70%        -9.71%        -9.34%
+gcc                   -0.61%        -1.43%        -1.62%        -2.27%
+gobmk                 -0.90%        -1.36%        -1.44%        -1.72%
+h264ref               +4.76%        +3.92%        +1.17%        -2.00%
+lbm                   +0.61%        -0.31%        -0.32%        -0.30%
+leslie3d              -0.19%        -1.55%        -1.53%        -1.02%
+libquantum            -0.14%        -0.90%        -0.91%        -0.87%
+milc                  -1.74%        -1.52%        -1.57%        -1.76%
+namd                  -0.28%        -0.35%        -0.36%        -0.19%
+omnetpp               -0.55%        -1.65%        -3.12%        -3.55%
+povray                -1.46%        -3.13%        -3.17%        -2.76%
+sjeng                 -1.36%        -1.71%        -1.71%        -1.36%
+xalancbmk             -0.56%        -1.92%        -2.10%        -2.42%
+
+--- D-Cache Nack Change vs Baseline (%) ---
+Benchmark        Tracing_Map  Tracing_Map+ADDI  Tracing_Map+ADDI+SAB  Tracing_Map+ADDI+SAB+Spec
+astar                 +3.13%        +0.49%        +0.19%        +4.82%
+bwaves                +0.13%        -0.07%        -0.07%        -0.11%
+bzip2                 +1.46%        -0.31%        -0.28%        +0.28%
+calculix              +6.46%        +2.17%        +6.40%        +3.73%
+dealII                +0.20%       +19.11%       +20.30%       +17.76%
+gcc                   +0.61%        +3.12%        +2.80%        +3.35%
+gobmk                 -0.96%        -0.52%        -0.36%        -0.30%
+h264ref               +8.44%        +4.38%        +4.46%        +4.32%
+lbm                   -1.98%        -1.18%        -1.18%        -1.19%
+leslie3d              +1.35%        +1.62%        +1.59%        +1.42%
+libquantum            +2.38%        +2.99%        +2.98%        +2.92%
+milc                  +6.29%        +4.58%        +4.74%        +6.55%
+namd                  +0.28%        +0.54%        +0.67%        -0.11%
+omnetpp               +4.79%        +4.19%        +5.26%        +5.88%
+povray                +3.10%        +3.19%        +3.13%        -0.01%
+sjeng                 +1.08%        +0.67%        +0.80%        +2.14%
+xalancbmk             +1.87%        +4.41%        +4.46%        +4.76%
+
+--- D-Cache Valid Access Change vs Baseline (%) ---
+Benchmark        Tracing_Map  Tracing_Map+ADDI  Tracing_Map+ADDI+SAB  Tracing_Map+ADDI+SAB+Spec
+astar                 -0.81%        +0.65%        +0.66%        +1.48%
+bwaves                +0.10%        -0.04%        -0.05%        -0.08%
+bzip2                 -1.65%        -2.00%        -2.95%        -4.66%
+calculix              +0.14%        +0.04%        -0.16%        -0.15%
+dealII                -0.14%        +0.42%        +0.43%        +0.51%
+gcc                   -0.17%        -0.40%        -0.61%        -0.78%
+gobmk                 -0.03%        -0.12%        -0.13%        -0.49%
+h264ref               +0.74%        +0.35%        -1.32%        -1.98%
+lbm                   +1.47%        +1.83%        +1.81%        +1.82%
+leslie3d              +1.14%        +1.21%        +1.19%        +1.10%
+libquantum            +2.66%        +3.74%        +3.75%        +3.67%
+milc                  +3.84%        +3.31%        +3.38%        +3.95%
+namd                  +0.12%        +0.05%        +0.07%        +0.08%
+omnetpp               +1.82%        +1.58%        +1.44%        +1.53%
+povray                -0.04%        -1.82%        -1.86%        -2.20%
+sjeng                 -0.82%        -0.62%        -0.66%        -0.98%
+xalancbmk             +0.44%        +0.96%        +0.97%        +1.09%
+
+--- D-Cache L2 Request Change vs Baseline (%) ---
+Benchmark        Tracing_Map  Tracing_Map+ADDI  Tracing_Map+ADDI+SAB  Tracing_Map+ADDI+SAB+Spec
+astar                 -0.36%        -0.52%        -0.65%        -0.72%
+bwaves                -0.05%        -0.08%        -0.09%        -0.10%
+bzip2                 -0.15%        -0.15%        -0.23%        -0.44%
+calculix              +1.80%        -0.36%        +0.72%        -1.00%
+dealII                -0.39%        +1.17%        +1.21%        +1.07%
+gcc                   -0.06%        +0.12%        +0.07%        +0.10%
+gobmk                 +0.07%        -0.03%        -0.14%        -0.34%
+h264ref               +0.64%        +0.60%        +0.36%        +0.13%
+lbm                   +0.07%        +0.06%        +0.03%        +0.10%
+leslie3d              -0.86%        -0.72%        -0.74%        -0.74%
+libquantum            +0.01%        -0.03%        -0.03%        -0.03%
+milc                  -0.03%        -0.08%        -0.06%        -0.07%
+namd                  +0.04%        -0.16%        -0.19%        -0.10%
+omnetpp               +0.02%        -0.02%        -0.42%        -0.66%
+povray                -0.34%        -0.31%        -0.33%        -0.37%
+sjeng                 -0.10%        -0.14%        -0.30%        -0.43%
+xalancbmk             -0.16%        -0.31%        -0.41%        -0.32%
+
+--- D-Cache Miss Rate Proxy Difference vs Baseline (pp) ---
+Benchmark        Tracing_Map  Tracing_Map+ADDI  Tracing_Map+ADDI+SAB  Tracing_Map+ADDI+SAB+Spec
+astar                 +0.01        -0.02        -0.02        -0.03
+bwaves                -0.01        -0.00        -0.00        -0.00
+bzip2                 +0.05        +0.06        +0.09        +0.14
+calculix              +0.00        -0.00        +0.00        -0.00
+dealII                -0.00        +0.01        +0.01        +0.01
+gcc                   +0.00        +0.02        +0.03        +0.03
+gobmk                 +0.00        +0.00        -0.00        +0.00
+h264ref               -0.00        +0.00        +0.02        +0.02
+lbm                   -0.06        -0.08        -0.08        -0.08
+leslie3d              -0.13        -0.12        -0.12        -0.12
+libquantum            -0.10        -0.14        -0.15        -0.14
+milc                  -0.15        -0.13        -0.13        -0.15
+namd                  -0.00        -0.01        -0.02        -0.01
+omnetpp               -0.14        -0.13        -0.15        -0.17
+povray                -0.01        +0.07        +0.07        +0.09
+sjeng                 +0.02        +0.01        +0.01        +0.02
+xalancbmk             -0.04        -0.09        -0.10        -0.10
+AVERAGE               -0.03        -0.03        -0.03        -0.03
+
+--- L2 DTLB Miss Change vs Baseline (%) ---
+Benchmark        Tracing_Map  Tracing_Map+ADDI  Tracing_Map+ADDI+SAB  Tracing_Map+ADDI+SAB+Spec
+astar                 +4.53%        +4.90%        +5.17%        +2.05%
+bwaves                -0.24%        -0.25%        -0.23%        -0.21%
+bzip2                 +1.56%        +2.38%        +2.15%        +1.81%
+calculix              +4.84%        -6.93%        -4.06%        -3.55%
+dealII                +0.04%        -1.63%        -1.46%        -3.64%
+gcc                   -0.32%        -0.26%        -0.36%        -0.22%
+gobmk                 +0.41%        +0.46%        +0.78%        +1.88%
+h264ref               +8.59%        +8.14%        +6.85%        +6.30%
+lbm                   +0.01%        -0.01%        +0.03%        -0.01%
+leslie3d              +0.11%        +0.99%        +0.99%        +1.09%
+libquantum            +0.00%        -0.00%        -0.00%        +0.00%
+milc                  +0.29%        +0.36%        +0.35%        +0.38%
+namd                  +2.59%        +5.29%        +7.99%        +5.38%
+omnetpp               -0.02%        +0.06%        -0.30%        -0.65%
+povray                +0.53%        -0.71%        -0.74%        -1.17%
+sjeng                 -0.02%        -0.16%        -0.12%        -0.18%
+xalancbmk             -0.01%        +0.06%        -0.09%        -0.16%
+
+--- Execute Load Count Change vs Baseline (%) ---
+Benchmark        Tracing_Map  Tracing_Map+ADDI  Tracing_Map+ADDI+SAB  Tracing_Map+ADDI+SAB+Spec
+astar                 -0.72%        +1.67%        +1.68%        +2.83%
+bwaves                +0.03%        +0.03%        +0.03%        +0.02%
+bzip2                 -0.20%        +0.01%        -1.81%        -4.59%
+calculix              +0.15%        +0.06%        -0.18%        -0.12%
+dealII                -0.04%        +1.01%        +1.00%        +0.90%
+gcc                   +0.52%        +1.97%        +1.56%        +1.36%
+gobmk                 +0.79%        +1.90%        +1.80%        +1.44%
+h264ref               +1.85%        +1.53%        -0.81%        -1.34%
+lbm                   +0.06%        +0.06%        +0.06%        +0.05%
+leslie3d              -0.00%        +0.06%        +0.07%        +0.07%
+libquantum            +0.00%        +0.40%        +0.38%        +0.44%
+milc                  +0.00%        +0.00%        +0.00%        +0.00%
+namd                  +0.08%        -0.06%        -0.09%        +0.09%
+omnetpp               +0.08%        +0.57%        -1.30%        -1.20%
+povray                +0.26%        +0.78%        +0.70%        +1.19%
+sjeng                 +0.40%        +0.83%        +0.86%        +0.50%
+xalancbmk             +0.12%        +0.35%        +0.27%        +0.28%
+
+--- Execute Store Count Change vs Baseline (%) ---
+Benchmark        Tracing_Map  Tracing_Map+ADDI  Tracing_Map+ADDI+SAB  Tracing_Map+ADDI+SAB+Spec
+astar                 +0.56%        +1.26%        +1.29%        +1.30%
+bwaves                +0.95%        +0.96%        +0.95%        +0.50%
+bzip2                 -1.51%        -0.26%        -1.70%        -5.26%
+calculix              -0.47%        -1.01%        -2.33%        -4.43%
+dealII                +0.23%        +1.55%        +1.44%        +1.61%
+gcc                   +0.45%        +2.21%        +2.05%        +1.38%
+gobmk                 +0.32%        +0.82%        +0.74%        +0.21%
+h264ref               +6.09%        +5.99%        +1.82%        -0.03%
+lbm                   -0.01%        -0.01%        -0.01%        -0.01%
+leslie3d              -0.01%        -0.02%        -0.03%        -0.04%
+libquantum            -0.61%        -0.64%        -0.64%        -0.65%
+milc                  -0.14%        -0.11%        -0.14%        -0.17%
+namd                  -0.10%        -0.10%        -0.11%        -0.24%
+omnetpp               -0.01%        +1.54%        +0.25%        +0.48%
+povray                -0.33%        +0.50%        +0.38%        -0.57%
+sjeng                 -0.05%        +0.01%        -0.00%        -0.72%
+xalancbmk             -0.08%        +0.29%        -0.15%        -0.13%
+
+--- Mini Exception Change vs Baseline (%) ---
+Benchmark        Tracing_Map  Tracing_Map+ADDI  Tracing_Map+ADDI+SAB  Tracing_Map+ADDI+SAB+Spec
+astar                 -6.04%        -7.43%        -7.44%        -3.92%
+bwaves               +12.28%       +12.17%       +11.46%       +10.04%
+bzip2                 +3.62%        +3.80%       -14.54%       -34.57%
+calculix             +48.54%       +20.31%       -53.51%       -53.63%
+dealII                -3.83%       +13.84%       +14.00%       +10.93%
+gcc                   -0.59%        +4.27%        -0.75%        +0.98%
+gobmk                 +4.88%        +6.32%        +4.10%        +7.44%
+h264ref              +17.52%       +12.46%        -3.99%       -12.89%
+lbm                   -8.35%        -5.30%        -3.60%        -8.86%
+leslie3d              +6.61%        +3.64%       -11.31%       -13.37%
+libquantum           +37.21%        +8.50%       +19.31%       +12.42%
+milc                  +6.25%        +6.25%       -30.56%        +1.04%
+namd                 +72.33%       +69.86%        -4.52%       -11.16%
+omnetpp               +0.75%        +5.73%        -8.00%        -7.26%
+povray                -3.30%        -1.63%        -2.32%        +2.23%
+sjeng                 -3.22%        -0.82%        -3.49%        +1.10%
+xalancbmk             -5.23%        -8.97%       -10.91%        -5.94%
+
+--- Mini Exception Absolute Count ---
+Benchmark           Baseline   Tracing_Map  Tracing_Map+ADDI  Tracing_Map+ADDI+SAB  Tracing_Map+ADDI+SAB+Spec
+astar              1,310,138     1,231,037     1,212,762     1,212,672     1,258,762
+bwaves                86,902        97,576        97,481        96,862        95,626
+bzip2                698,968       724,256       725,550       597,343       457,342
+calculix              13,313        19,775        16,017         6,190         6,172
+dealII               215,452       207,199       245,274       245,615       238,994
+gcc                  512,428       509,385       534,327       508,606       517,444
+gobmk                228,264       239,395       242,684       237,618       245,236
+h264ref              588,663       691,799       662,030       565,155       512,798
+lbm                       98            90            93            95            90
+leslie3d               2,174         2,317         2,253         1,928         1,883
+libquantum                89           123            97           107           100
+milc                      48            51            51            33            48
+namd                   2,595         4,472         4,408         2,478         2,306
+omnetpp              860,619       867,050       909,902       791,740       798,099
+povray             1,102,900     1,066,532     1,084,932     1,077,304     1,127,513
+sjeng                174,327       168,714       172,891       168,245       176,237
+xalancbmk            328,363       311,194       298,924       292,549       308,872
+AVERAGE              360,314       361,233       365,275       341,443       338,090
+
+--- Tracing_Map Fast Translate Count (dispatch) ---
+Benchmark        Tracing_Map  Tracing_Map+ADDI  Tracing_Map+ADDI+SAB  Tracing_Map+ADDI+SAB+Spec
+astar             14,292,873    29,530,865    29,544,772    29,708,314
+bwaves             3,670,483     3,711,056     3,710,876     3,709,815
+bzip2             19,172,875    24,799,514    24,497,504    23,812,287
+calculix             511,819    22,357,320    22,355,156    22,259,583
+dealII            16,865,387    20,125,488    20,143,127    20,152,061
+gcc                9,647,446    24,841,375    24,811,697    24,723,834
+gobmk              7,828,882    20,629,972    20,617,372    20,535,698
+h264ref           30,288,297    38,795,128    38,736,760    39,302,337
+lbm               26,809,580    32,060,356    32,060,859    32,058,542
+leslie3d           1,958,099    18,702,319    18,684,679    18,680,482
+libquantum               267    40,439,189    40,431,993    40,449,880
+milc              16,974,224    30,695,350    30,703,935    30,728,052
+namd               9,318,723    14,886,585    14,886,521    14,905,178
+omnetpp            7,001,811    23,291,212    23,154,255    23,141,834
+povray            18,361,302    33,117,894    33,151,339    32,965,623
+sjeng             10,250,044    15,086,381    15,087,605    14,948,294
+xalancbmk          8,685,463    45,267,457    45,264,450    45,206,540
+
+--- Tracing_Map Accelerated Load Ratio (tracing_map_fast_translate / total_exe_ld, %) ---
+Benchmark        Tracing_Map  Tracing_Map+ADDI  Tracing_Map+ADDI+SAB  Tracing_Map+ADDI+SAB+Spec
+astar                 18.98%        38.29%        38.30%        38.09%
+bwaves                 5.40%         5.46%         5.46%         5.46%
+bzip2                 31.57%        40.75%        41.00%        41.02%
+calculix               1.31%        57.47%        57.60%        57.32%
+dealII                37.58%        44.38%        44.42%        44.49%
+gcc                   16.67%        42.31%        42.43%        42.36%
+gobmk                 15.10%        39.35%        39.37%        39.35%
+h264ref               42.59%        54.73%        55.93%        57.05%
+lbm                   79.72%        95.34%        95.34%        95.34%
+leslie3d               3.90%        37.23%        37.19%        37.18%
+libquantum             0.00%        99.69%        99.69%        99.68%
+milc                  29.95%        54.16%        54.17%        54.21%
+namd                  19.63%        31.40%        31.40%        31.39%
+omnetpp               10.58%        35.01%        35.46%        35.41%
+povray                22.47%        40.33%        40.40%        39.98%
+sjeng                 21.70%        31.81%        31.80%        31.62%
+xalancbmk             12.43%        64.62%        64.67%        64.58%
+AVERAGE               21.74%        47.78%        47.92%        47.91%
+
+--- SAB Runtime Ratio: conflict / (conflict + mini_exception) ---
+Benchmark              SAB方案        SPEC方案
+astar                  1.22%         1.11%
+bwaves                 3.56%         3.64%
+bzip2                 77.79%        82.10%
+calculix              88.30%        89.78%
+dealII                 9.40%         8.86%
+gcc                   38.19%        37.83%
+gobmk                 25.29%        24.41%
+h264ref               51.18%        53.35%
+lbm                    0.00%         0.00%
+leslie3d              51.98%        52.74%
+libquantum             0.00%         0.00%
+milc                   0.00%         0.00%
+namd                  93.90%        94.17%
+omnetpp               45.41%        44.80%
+povray                11.98%        11.96%
+sjeng                 23.18%        22.61%
+xalancbmk             21.31%        22.68%
+AVERAGE               31.92%        32.36%
+
+--- Spec Wakeup Retry/Error Ratios (Spec Variant) ---
+Benchmark        RetryPath占比            错误/总错误占比        错误Wakeup占总占比      Retry中错误占比
+astar                 55.24%              39.21%              51.70%          36.71%
+bwaves                95.08%              98.63%              19.00%          19.71%
+bzip2                 59.67%              47.93%              38.17%          30.66%
+calculix              65.55%              36.30%              22.62%          12.53%
+dealII                80.62%              70.64%              47.29%          41.44%
+gcc                   59.40%              41.98%              55.57%          39.28%
+gobmk                 56.52%              41.41%              44.99%          32.97%
+h264ref               82.06%              71.64%              40.25%          35.14%
+lbm                   99.99%              99.99%             100.00%         100.00%
+leslie3d              94.66%              91.20%              59.77%          57.58%
+libquantum            99.67%              99.74%              99.73%          99.80%
+milc                  79.00%              70.83%              70.50%          63.21%
+namd                  67.06%              47.01%              44.34%          31.09%
+omnetpp               64.20%              54.30%              63.33%          53.56%
+povray                61.92%              46.69%              56.04%          42.27%
+sjeng                 54.29%              46.22%              41.43%          35.28%
+xalancbmk             77.79%              72.18%              65.71%          60.98%
+AVERAGE               73.69%              63.29%              54.14%          46.60%
+
+========================================================================================================================
+
+Generating plots...
+[OK] 1_ipc_change.png saved
+[OK] 2_cycles_change.png saved
+[OK] 3a_dtlb_valid_change.png saved
+[OK] 3_dtlb_miss_change.png saved
+[OK] 4a_dcache_valid_change.png saved
+[OK] 4_dcache_nack_change.png saved
+[OK] 4b_dcache_req_change.png saved
+[OK] 4c_dcache_miss_rate.png saved
+[OK] 3b_l2_tlb_miss_change.png saved
+[OK] 10_exe_ld_change.png saved
+[OK] 11_exe_st_change.png saved
+[OK] 5_mini_excpt_change.png saved
+[OK] 5a_mini_excpt_absolute.png saved
+[OK] 6_tracing_map_fast_translate.png saved
+[OK] 7_tracing_map_detail_addi.png saved
+[OK] 9_tracing_map_accel_ratio.png saved
+[OK] 8_sab_conflict.png saved
+[OK] 8a_sab_conflict_ratio.png saved
+[OK] 12_spec_wakeup_ratios.png saved
+
+All plots saved to: /mnt/c/code_work/hardware/chipyard/spec07_logs/plots
+Done!

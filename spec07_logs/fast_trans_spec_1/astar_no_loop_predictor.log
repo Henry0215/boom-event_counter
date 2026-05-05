@@ -1,34 +1,34 @@
-{"type": "max_inst", "times": 1, "cycles": 2181867684, "inst": 1278571800}
-{"type": "event  0", "value": 333007727}
-{"type": "event  1", "value": 200003654}
-{"type": "event  2", "value": 48313279}
-{"type": "event  3", "value": 34270630}
-{"type": "event  4", "value": 182199489}
-{"type": "event  5", "value": 58476469}
-{"type": "event  6", "value": 26660207}
-{"type": "event  7", "value": 104538465}
-{"type": "event  8", "value": 863514}
-{"type": "event  9", "value": 1641811}
+{"type": "max_inst", "times": 1, "cycles": 2181797134, "inst": 1278503026}
+{"type": "event  0", "value": 332894958}
+{"type": "event  1", "value": 200003659}
+{"type": "event  2", "value": 48292657}
+{"type": "event  3", "value": 34253761}
+{"type": "event  4", "value": 182105804}
+{"type": "event  5", "value": 58404115}
+{"type": "event  6", "value": 26631854}
+{"type": "event  7", "value": 104558343}
+{"type": "event  8", "value": 871063}
+{"type": "event  9", "value": 1642769}
 {"type": "event 10", "value": 56479571}
 {"type": "event 11", "value": 26913485}
-{"type": "event 12", "value": 107333}
+{"type": "event 12", "value": 107397}
 {"type": "event 13", "value": 0}
 {"type": "event 14", "value": 4}
-{"type": "event 15", "value": 1259585}
-{"type": "event 16", "value": 29702795}
-{"type": "event 17", "value": 5986002}
+{"type": "event 15", "value": 1258314}
+{"type": "event 16", "value": 29717929}
+{"type": "event 17", "value": 5989804}
 {"type": "event 18", "value": 0}
-{"type": "event 19", "value": 45253297}
-{"type": "event 20", "value": 129503364}
+{"type": "event 19", "value": 45206500}
+{"type": "event 20", "value": 129666199}
 {"type": "event 21", "value": 0}
-{"type": "event 22", "value": 5068018}
+{"type": "event 22", "value": 5069791}
 {"type": "event 23", "value": 0}
-{"type": "event 24", "value": 14271}
-{"type": "event 25", "value": 13897852}
-{"type": "event 26", "value": 0}
-{"type": "event 27", "value": 0}
-{"type": "event 28", "value": 0}
-{"type": "event 29", "value": 0}
+{"type": "event 24", "value": 13913}
+{"type": "event 25", "value": 13874610}
+{"type": "event 26", "value": 63198119}
+{"type": "event 27", "value": 34907260}
+{"type": "event 28", "value": 32674218}
+{"type": "event 29", "value": 12813051}
 {"type": "event 30", "value": 0}
 {"type": "event 31", "value": 0}
 {"type": "event 32", "value": 0}
@@ -63,7 +63,7 @@
 {"type": "event 61", "value": 0}
 {"type": "event 62", "value": 0}
 {"type": "event 63", "value": 0}
-stack addr: 0x3fcd3449e8
+stack addr: 0x3fd42299e8
 textinfo: 4
 --- load elf: alloc text memory: (0x200000, 0x22f000) ---
 sim slice info, start: 300200000000, simNum: 1137933639, rawLength: 200000000, warmup: 1000000001, exitpc: 0x22a200, cause: 2
@@ -82,5 +82,5 @@ warmup: 1000000001, maxinst: 200000000, period: 1
 running log file: astar/simpoint1_astar_nckpt_301200000000_len_1200000000_warmup_1000000000_weight34.runlog
 sample function addr: 0x10018b6, sp: 0x107e0f8, s0: 0x107f0f8
 syscall is overflow, exit.
-test program user running info, cycles: 9855859392, insts: 5786801316
-test program total running info, cycles: 9855859342, insts: 5786801312
+test program user running info, cycles: 9859801248, insts: 5787558313
+test program total running info, cycles: 9859801198, insts: 5787558309
