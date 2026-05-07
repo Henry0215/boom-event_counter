@@ -46,13 +46,23 @@ for b in SPEC06_BENCHMARKS:
 for b in SPEC17_BENCHMARKS:
     BENCH_SUITE[b] = "SPEC17"
 
+
+def bench_display_name(bench: str) -> str:
+    if bench.endswith("_r"):
+        return bench[:-2]
+    return bench
+
+
+def bench_display_names(benches: list[str]) -> list[str]:
+    return [bench_display_name(bench) for bench in benches]
+
 VARIANT_ORDER = ["no_addi", "addi", "sab", "spec"]
 VARIANT_LABELS = {
     "baseline": "Baseline",
-    "no_addi":  "CMAP",
-    "addi":     "CMAP+ADDI",
-    "sab":      "CMAP+ADDI+SAB",
-    "spec":     "CMAP+ADDI+SAB+Spec",
+    "no_addi":  "Tracing Map",
+    "addi":     "Tracing Map+ADDI",
+    "sab":      "Tracing Map+ADDI+SAB",
+    "spec":     "Tracing Map+ADDI+SAB+Spec",
 }
 
 COLORS = {
@@ -77,9 +87,9 @@ OPT_DTLB_VALID = 4;  OPT_DTLB_MISS  = 5
 OPT_DCACHE_VALID=7;  OPT_DCACHE_NACK= 8; OPT_DCACHE_REQ = 9
 OPT_COMMIT_LD  = 10; OPT_COMMIT_ST  = 11
 OPT_L2_TLB_MISS= 12; OPT_MINI_EXCPT = 15
-OPT_CMAP_FAST_TRANS = 16; OPT_CMAP_LD_UPDATE = 17
-OPT_CMAP_DEC_TRANS  = 20; OPT_CMAP_NOT_SAME  = 21
-OPT_CMAP_ADDI_UPD   = 22; OPT_SAB_CONFLICT   = 24
+OPT_Tracing_Map_FAST_TRANS = 16; OPT_Tracing_Map_LD_UPDATE = 17
+OPT_Tracing_Map_DEC_TRANS  = 20; OPT_Tracing_Map_NOT_SAME  = 21
+OPT_Tracing_Map_ADDI_UPD   = 22; OPT_SAB_CONFLICT   = 24
 OPT_ROLLBACK   = 25
 OPT_SPEC_WAKEUP_TOTAL       = 26; OPT_SPEC_WAKEUP_RETRY       = 27
 OPT_SPEC_WAKEUP_WRONG       = 28; OPT_SPEC_WAKEUP_WRONG_RETRY = 29
@@ -269,7 +279,7 @@ def get_exe_ld(data, var, bench):
     if var == "baseline":
         return get_metric(data, var, bench, BL_EXE_LD)
     exe_ld = get_metric(data, var, bench, OPT_EXE_LD)
-    fast = get_metric(data, var, bench, OPT_CMAP_FAST_TRANS)
+    fast = get_metric(data, var, bench, OPT_Tracing_Map_FAST_TRANS)
     if exe_ld is not None and fast is not None:
         return exe_ld + fast
     return exe_ld
@@ -277,7 +287,7 @@ def get_exe_ld(data, var, bench):
 def get_cmap_fast_trans(data, var, bench):
     if var == "baseline":
         return None
-    return get_metric(data, var, bench, OPT_CMAP_FAST_TRANS)
+    return get_metric(data, var, bench, OPT_Tracing_Map_FAST_TRANS)
 
 def get_dcache_miss_rate(data, var, bench):
     req = get_dcache_req(data, var, bench)
@@ -586,6 +596,58 @@ def print_spec_wakeup_table(data: dict, benchmarks: list[str]):
         print(f"{bench:<16} {BENCH_SUITE[bench]:<7} {retry_pct:9.2f}% {overall_fail:11.2f}% {retry_fail:11.2f}% {normal_fail:11.2f}%")
 
 
+def print_cmap_detail_table(data: dict, benchmarks: list[str]):
+    print_separator("CMAP Update Count Comparison (Normal vs ADDI)")
+
+    print(
+        f"{'Benchmark':<16} {'Suite':<7} {'Normal Update':>16} {'ADDI Load Upd':>16} "
+        f"{'ADDI ADDI Upd':>16} {'ADDI Total':>16} {'Delta':>14} {'Change(%)':>12}"
+    )
+
+    normal_values = []
+    addi_ld_values = []
+    addi_addi_values = []
+    addi_total_values = []
+    delta_values = []
+    change_values = []
+
+    for bench in benchmarks:
+        ev_normal = data.get("no_addi", {}).get(bench, {})
+        ev_addi = data.get("addi", {}).get(bench, {})
+
+        normal_upd = ev_normal.get(OPT_Tracing_Map_LD_UPDATE, 0)
+        addi_ld_upd = ev_addi.get(OPT_Tracing_Map_LD_UPDATE, 0)
+        addi_addi_upd = ev_addi.get(OPT_Tracing_Map_ADDI_UPD, 0)
+        addi_total = addi_ld_upd + addi_addi_upd
+
+        normal_values.append(normal_upd)
+        addi_ld_values.append(addi_ld_upd)
+        addi_addi_values.append(addi_addi_upd)
+        addi_total_values.append(addi_total)
+        delta = addi_total - normal_upd
+        delta_values.append(delta)
+        change = (delta / normal_upd * 100) if normal_upd > 0 else None
+        if change is not None:
+            change_values.append(change)
+
+        row = (
+            f"{bench:<16} {BENCH_SUITE[bench]:<7} "
+            f"{normal_upd:16,.0f} {addi_ld_upd:16,.0f} {addi_addi_upd:16,.0f} {addi_total:16,.0f} "
+            f"{delta:+14,.0f}"
+        )
+        row += f" {change:11.2f}%" if change is not None else f" {'N/A':>12}"
+        print(row)
+
+    avg_line = (
+        f"{'AVERAGE':<16} {'':7} "
+        f"{np.mean(normal_values):16,.0f} {np.mean(addi_ld_values):16,.0f} "
+        f"{np.mean(addi_addi_values):16,.0f} {np.mean(addi_total_values):16,.0f} "
+        f"{np.mean(delta_values):+14,.0f}"
+    )
+    avg_line += f" {np.mean(change_values):11.2f}%" if change_values else f" {'N/A':>12}"
+    print(avg_line)
+
+
 def print_l2_tlb_table(data: dict, benchmarks: list[str]):
     print_separator("L2 TLB Miss 变化率 (%)")
     header = f"{'Benchmark':<16} {'Suite':<7}"
@@ -608,7 +670,7 @@ def print_l2_tlb_table(data: dict, benchmarks: list[str]):
 def _plot_change_generic(data: dict, output_dir: Path, filename: str,
                          title: str, ylabel: str, extractor):
     """Generic grouped-bar chart showing percentage change vs baseline."""
-    fig, ax = plt.subplots(figsize=(18, 7))
+    fig, ax = plt.subplots(figsize=(18, 9))
     x = np.arange(len(ALL_BENCHMARKS))
     width = 0.18
     offsets = np.arange(len(VARIANT_ORDER)) - len(VARIANT_ORDER) / 2 + 0.5
@@ -629,7 +691,7 @@ def _plot_change_generic(data: dict, output_dir: Path, filename: str,
     ax.set_ylabel(ylabel, fontsize=12)
     ax.set_title(title, fontsize=14)
     ax.set_xticks(x)
-    ax.set_xticklabels(ALL_BENCHMARKS, rotation=50, ha="right", fontsize=8)
+    ax.set_xticklabels(bench_display_names(ALL_BENCHMARKS), rotation=50, ha="right", fontsize=8)
     ax.axhline(y=0, color="black", linestyle="-", linewidth=0.8)
     ax.legend(loc="upper left", fontsize=9)
     ax.grid(axis="y", alpha=0.3)
@@ -639,7 +701,7 @@ def _plot_change_generic(data: dict, output_dir: Path, filename: str,
 
 
 def plot_ipc_change(data: dict, output_dir: Path):
-    fig, ax = plt.subplots(figsize=(18, 7))
+    fig, ax = plt.subplots(figsize=(18, 9))
     x = np.arange(len(ALL_BENCHMARKS))
     width = 0.18
     offsets = np.arange(len(VARIANT_ORDER)) - len(VARIANT_ORDER) / 2 + 0.5
@@ -699,7 +761,7 @@ def plot_ipc_change(data: dict, output_dir: Path):
     ax.set_ylabel("IPC Change vs Baseline (%)", fontsize=12)
     ax.set_title("Combined 20 Benchmarks: IPC Change vs Baseline", fontsize=14)
     ax.set_xticks(x)
-    ax.set_xticklabels(ALL_BENCHMARKS, rotation=50, ha="right", fontsize=8)
+    ax.set_xticklabels(bench_display_names(ALL_BENCHMARKS), rotation=50, ha="right", fontsize=8)
     ax.axhline(y=0, color="black", linestyle="-", linewidth=0.8)
     ax.legend(loc="upper left", fontsize=9)
     ax.grid(axis="y", alpha=0.3)
@@ -709,7 +771,7 @@ def plot_ipc_change(data: dict, output_dir: Path):
 
 
 def plot_coverage(data: dict, output_dir: Path):
-    fig, ax = plt.subplots(figsize=(18, 7))
+    fig, ax = plt.subplots(figsize=(18, 9))
     x = np.arange(len(ALL_BENCHMARKS))
     width = 0.18
     offsets = np.arange(len(VARIANT_ORDER)) - len(VARIANT_ORDER) / 2 + 0.5
@@ -733,7 +795,7 @@ def plot_coverage(data: dict, output_dir: Path):
     ax.set_ylabel("Tracing Map Accelerated Load Ratio (%)", fontsize=12)
     ax.set_title("Combined 20 Benchmarks: Tracing Map Coverage", fontsize=14)
     ax.set_xticks(x)
-    ax.set_xticklabels(ALL_BENCHMARKS, rotation=50, ha="right", fontsize=8)
+    ax.set_xticklabels(bench_display_names(ALL_BENCHMARKS), rotation=50, ha="right", fontsize=8)
     ax.legend(loc="upper left", fontsize=9)
     ax.grid(axis="y", alpha=0.3)
     plt.tight_layout()
@@ -742,7 +804,7 @@ def plot_coverage(data: dict, output_dir: Path):
 
 
 def plot_mini_excpt_change(data: dict, output_dir: Path):
-    fig, ax = plt.subplots(figsize=(18, 7))
+    fig, ax = plt.subplots(figsize=(18, 9))
     x = np.arange(len(ALL_BENCHMARKS))
     width = 0.18
     offsets = np.arange(len(VARIANT_ORDER)) - len(VARIANT_ORDER) / 2 + 0.5
@@ -763,7 +825,7 @@ def plot_mini_excpt_change(data: dict, output_dir: Path):
     ax.set_ylabel("Mini Exception Change vs Baseline (%)", fontsize=12)
     ax.set_title("Combined 20 Benchmarks: Mini Exception Change", fontsize=14)
     ax.set_xticks(x)
-    ax.set_xticklabels(ALL_BENCHMARKS, rotation=50, ha="right", fontsize=8)
+    ax.set_xticklabels(bench_display_names(ALL_BENCHMARKS), rotation=50, ha="right", fontsize=8)
     ax.axhline(y=0, color="black", linestyle="-", linewidth=0.8)
     ax.legend(loc="upper left", fontsize=9)
     ax.grid(axis="y", alpha=0.3)
@@ -773,7 +835,7 @@ def plot_mini_excpt_change(data: dict, output_dir: Path):
 
 
 def plot_dtlb_miss_change(data: dict, output_dir: Path):
-    fig, ax = plt.subplots(figsize=(18, 7))
+    fig, ax = plt.subplots(figsize=(18, 9))
     x = np.arange(len(ALL_BENCHMARKS))
     width = 0.18
     offsets = np.arange(len(VARIANT_ORDER)) - len(VARIANT_ORDER) / 2 + 0.5
@@ -794,7 +856,7 @@ def plot_dtlb_miss_change(data: dict, output_dir: Path):
     ax.set_ylabel("DTLB Miss Change vs Baseline (%)", fontsize=12)
     ax.set_title("Combined 20 Benchmarks: DTLB Miss Change", fontsize=14)
     ax.set_xticks(x)
-    ax.set_xticklabels(ALL_BENCHMARKS, rotation=50, ha="right", fontsize=8)
+    ax.set_xticklabels(bench_display_names(ALL_BENCHMARKS), rotation=50, ha="right", fontsize=8)
     ax.axhline(y=0, color="black", linestyle="-", linewidth=0.8)
     ax.legend(loc="upper left", fontsize=9)
     ax.grid(axis="y", alpha=0.3)
@@ -804,7 +866,7 @@ def plot_dtlb_miss_change(data: dict, output_dir: Path):
 
 
 def plot_dcache_nack_change(data: dict, output_dir: Path):
-    fig, ax = plt.subplots(figsize=(18, 7))
+    fig, ax = plt.subplots(figsize=(18, 9))
     x = np.arange(len(ALL_BENCHMARKS))
     width = 0.18
     offsets = np.arange(len(VARIANT_ORDER)) - len(VARIANT_ORDER) / 2 + 0.5
@@ -825,7 +887,7 @@ def plot_dcache_nack_change(data: dict, output_dir: Path):
     ax.set_ylabel("D-Cache NACK Change vs Baseline (%)", fontsize=12)
     ax.set_title("Combined 20 Benchmarks: D-Cache NACK Change", fontsize=14)
     ax.set_xticks(x)
-    ax.set_xticklabels(ALL_BENCHMARKS, rotation=50, ha="right", fontsize=8)
+    ax.set_xticklabels(bench_display_names(ALL_BENCHMARKS), rotation=50, ha="right", fontsize=8)
     ax.axhline(y=0, color="black", linestyle="-", linewidth=0.8)
     ax.legend(loc="upper left", fontsize=9)
     ax.grid(axis="y", alpha=0.3)
@@ -835,7 +897,7 @@ def plot_dcache_nack_change(data: dict, output_dir: Path):
 
 
 def plot_sab_conflict(data: dict, output_dir: Path):
-    fig, ax = plt.subplots(figsize=(18, 7))
+    fig, ax = plt.subplots(figsize=(18, 9))
     x = np.arange(len(ALL_BENCHMARKS))
     sab_variants = ["sab", "spec"]
     width = 0.3
@@ -855,7 +917,7 @@ def plot_sab_conflict(data: dict, output_dir: Path):
     ax.set_ylabel("SAB Conflict Count (Thousands)", fontsize=12)
     ax.set_title("Combined 20 Benchmarks: SAB Store-Load Conflict Count", fontsize=14)
     ax.set_xticks(x)
-    ax.set_xticklabels(ALL_BENCHMARKS, rotation=50, ha="right", fontsize=8)
+    ax.set_xticklabels(bench_display_names(ALL_BENCHMARKS), rotation=50, ha="right", fontsize=8)
     ax.legend(loc="upper left", fontsize=9)
     ax.grid(axis="y", alpha=0.3)
     plt.tight_layout()
@@ -888,7 +950,7 @@ def plot_dcache_req_change(data: dict, output_dir: Path):
 
 
 def plot_dcache_miss_rate(data: dict, output_dir: Path):
-    fig, ax = plt.subplots(figsize=(18, 7))
+    fig, ax = plt.subplots(figsize=(18, 9))
     x = np.arange(len(ALL_BENCHMARKS))
     width = 0.18
     offsets = np.arange(len(VARIANT_ORDER)) - len(VARIANT_ORDER) / 2 + 0.5
@@ -908,7 +970,7 @@ def plot_dcache_miss_rate(data: dict, output_dir: Path):
     ax.set_ylabel("D-Cache Miss Rate Difference vs Baseline (pp)", fontsize=12)
     ax.set_title("Combined 20 Benchmarks: D-Cache Miss Rate Proxy Difference", fontsize=14)
     ax.set_xticks(x)
-    ax.set_xticklabels(ALL_BENCHMARKS, rotation=50, ha="right", fontsize=8)
+    ax.set_xticklabels(bench_display_names(ALL_BENCHMARKS), rotation=50, ha="right", fontsize=8)
     ax.axhline(y=0, color="black", linestyle="-", linewidth=0.8)
     ax.legend(loc="upper left", fontsize=9)
     ax.grid(axis="y", alpha=0.3)
@@ -939,7 +1001,7 @@ def plot_mini_excpt_absolute(data: dict, output_dir: Path):
     all_variants = ["baseline"] + VARIANT_ORDER
     variant_colors = {"baseline": "#7f7f7f", **COLORS}
 
-    fig, ax = plt.subplots(figsize=(18, 7))
+    fig, ax = plt.subplots(figsize=(18, 9))
     x = np.arange(len(ALL_BENCHMARKS))
     width = 0.13
     offsets = np.arange(len(all_variants)) - len(all_variants) / 2 + 0.5
@@ -958,7 +1020,7 @@ def plot_mini_excpt_absolute(data: dict, output_dir: Path):
     ax.set_ylabel("Mini Exception Count (Millions)", fontsize=12)
     ax.set_title("Combined 20 Benchmarks: Mini Exception Absolute Count", fontsize=14)
     ax.set_xticks(x)
-    ax.set_xticklabels(ALL_BENCHMARKS, rotation=50, ha="right", fontsize=8)
+    ax.set_xticklabels(bench_display_names(ALL_BENCHMARKS), rotation=50, ha="right", fontsize=8)
     ax.legend(loc="upper left", fontsize=9)
     ax.grid(axis="y", alpha=0.3)
     plt.tight_layout()
@@ -967,7 +1029,7 @@ def plot_mini_excpt_absolute(data: dict, output_dir: Path):
 
 
 def plot_cmap_fast_trans(data: dict, output_dir: Path):
-    fig, ax = plt.subplots(figsize=(18, 7))
+    fig, ax = plt.subplots(figsize=(18, 9))
     x = np.arange(len(ALL_BENCHMARKS))
     width = 0.18
     offsets = np.arange(len(VARIANT_ORDER)) - len(VARIANT_ORDER) / 2 + 0.5
@@ -983,10 +1045,10 @@ def plot_cmap_fast_trans(data: dict, output_dir: Path):
 
     ax.axvline(x=len(SPEC06_BENCHMARKS) - 0.5, color="gray", linestyle=":", linewidth=1.5, alpha=0.7)
     ax.set_xlabel("Benchmark", fontsize=12)
-    ax.set_ylabel("CMAP Fast Translate Count (Millions)", fontsize=12)
-    ax.set_title("Combined 20 Benchmarks: CMAP Fast Translate Count at Dispatch", fontsize=14)
+    ax.set_ylabel("Tracing_Map Fast Translate Count (Millions)", fontsize=12)
+    ax.set_title("Combined 20 Benchmarks: Tracing_Map Fast Translate Count at Dispatch", fontsize=14)
     ax.set_xticks(x)
-    ax.set_xticklabels(ALL_BENCHMARKS, rotation=50, ha="right", fontsize=8)
+    ax.set_xticklabels(bench_display_names(ALL_BENCHMARKS), rotation=50, ha="right", fontsize=8)
     ax.legend(loc="upper left", fontsize=9)
     ax.grid(axis="y", alpha=0.3)
     plt.tight_layout()
@@ -995,43 +1057,35 @@ def plot_cmap_fast_trans(data: dict, output_dir: Path):
 
 
 def plot_cmap_detail(data: dict, output_dir: Path):
-    fig, ax = plt.subplots(figsize=(18, 7))
+    fig, ax = plt.subplots(figsize=(18, 9))
     x = np.arange(len(ALL_BENCHMARKS))
-    w = 0.6
-    var = "addi"
+    w = 0.36
 
-    fast = []
-    ld_upd = []
-    addi_upd = []
-    dec_fast = []
-    not_same = []
+    normal_upd_counts = []
+    ld_upd_counts = []
+    addi_upd_counts = []
 
     for bench in ALL_BENCHMARKS:
-        ev = data.get(var, {}).get(bench, {})
-        fast.append(ev.get(OPT_CMAP_FAST_TRANS, 0) / 1e6)
-        ld_upd.append(ev.get(OPT_CMAP_LD_UPDATE, 0) / 1e6)
-        addi_upd.append(ev.get(OPT_CMAP_ADDI_UPD, 0) / 1e6)
-        dec_fast.append(ev.get(OPT_CMAP_DEC_TRANS, 0) / 1e6)
-        not_same.append(ev.get(OPT_CMAP_NOT_SAME, 0) / 1e6)
+        ev_normal = data.get("no_addi", {}).get(bench, {})
+        ev_addi = data.get("addi", {}).get(bench, {})
+        normal_upd_counts.append(ev_normal.get(OPT_Tracing_Map_LD_UPDATE, 0) / 1e6)
+        ld_upd_counts.append(ev_addi.get(OPT_Tracing_Map_LD_UPDATE, 0) / 1e6)
+        addi_upd_counts.append(ev_addi.get(OPT_Tracing_Map_ADDI_UPD, 0) / 1e6)
 
-    fast = np.array(fast)
-    ld_upd = np.array(ld_upd)
-    addi_upd = np.array(addi_upd)
-    dec_fast = np.array(dec_fast)
-    not_same = np.array(not_same)
+    normal_upd_counts = np.array(normal_upd_counts)
+    ld_upd_counts = np.array(ld_upd_counts)
+    addi_upd_counts = np.array(addi_upd_counts)
 
-    ax.bar(x, fast, w, label="CMAP Fast Translate", color="#1f77b4")
-    ax.bar(x, ld_upd, w, bottom=fast, label="CMAP Load Update", color="#ff7f0e")
-    ax.bar(x, addi_upd, w, bottom=fast + ld_upd, label="CMAP ADDI Update", color="#2ca02c")
-    ax.bar(x, dec_fast, w, bottom=fast + ld_upd + addi_upd, label="CMAP Decode Fast Trans", color="#d62728")
-    ax.bar(x, not_same, w, bottom=fast + ld_upd + addi_upd + dec_fast, label="CMAP Valid Not Same Page", color="#9467bd")
+    ax.bar(x - w / 2, normal_upd_counts, w, label="Normal CMAP Update (Tracing Map)", color="#1f77b4", edgecolor="black", linewidth=0.4)
+    ax.bar(x + w / 2, ld_upd_counts, w, label="Tracing_Map Load Update (ADDI)", color="#ff7f0e", edgecolor="black", linewidth=0.4)
+    ax.bar(x + w / 2, addi_upd_counts, w, bottom=ld_upd_counts, label="Tracing_Map ADDI Update", color="#2ca02c", edgecolor="black", linewidth=0.4)
 
     ax.axvline(x=len(SPEC06_BENCHMARKS) - 0.5, color="gray", linestyle=":", linewidth=1.5, alpha=0.7)
     ax.set_xlabel("Benchmark", fontsize=12)
-    ax.set_ylabel("Count (Millions)", fontsize=12)
-    ax.set_title(f"Combined 20 Benchmarks: CMAP Detail Breakdown ({VARIANT_LABELS[var]})", fontsize=14)
+    ax.set_ylabel("Update Count (Millions)", fontsize=12)
+    ax.set_title("Combined 20 Benchmarks: CMAP Update Count Comparison (Normal vs ADDI)", fontsize=14)
     ax.set_xticks(x)
-    ax.set_xticklabels(ALL_BENCHMARKS, rotation=50, ha="right", fontsize=8)
+    ax.set_xticklabels(bench_display_names(ALL_BENCHMARKS), rotation=50, ha="right", fontsize=8)
     ax.legend(loc="upper left", fontsize=9)
     ax.grid(axis="y", alpha=0.3)
     plt.tight_layout()
@@ -1041,7 +1095,7 @@ def plot_cmap_detail(data: dict, output_dir: Path):
 
 def plot_sab_conflict_ratio(data: dict, output_dir: Path):
     sab_variants = ["sab", "spec"]
-    fig, ax = plt.subplots(figsize=(18, 7))
+    fig, ax = plt.subplots(figsize=(18, 9))
     x = np.arange(len(ALL_BENCHMARKS))
     width = 0.3
     offsets = np.arange(len(sab_variants)) - len(sab_variants) / 2 + 0.5
@@ -1064,7 +1118,7 @@ def plot_sab_conflict_ratio(data: dict, output_dir: Path):
     ax.set_ylabel("SAB Conflict Ratio in (Conflict + Exceptions) (%)", fontsize=12)
     ax.set_title("Combined 20 Benchmarks: SAB Conflict / (Conflict + Mini Exception)", fontsize=14)
     ax.set_xticks(x)
-    ax.set_xticklabels(ALL_BENCHMARKS, rotation=50, ha="right", fontsize=8)
+    ax.set_xticklabels(bench_display_names(ALL_BENCHMARKS), rotation=50, ha="right", fontsize=8)
     ax.legend(loc="upper left", fontsize=9)
     ax.grid(axis="y", alpha=0.3)
     plt.tight_layout()
@@ -1073,7 +1127,7 @@ def plot_sab_conflict_ratio(data: dict, output_dir: Path):
 
 
 def plot_spec_wakeup_ratios(data: dict, output_dir: Path):
-    fig, ax = plt.subplots(figsize=(18, 7))
+    fig, ax = plt.subplots(figsize=(18, 9))
     x = np.arange(len(ALL_BENCHMARKS))
     width = 0.2
     offsets = [-1.5 * width, -0.5 * width, 0.5 * width, 1.5 * width]
@@ -1104,7 +1158,7 @@ def plot_spec_wakeup_ratios(data: dict, output_dir: Path):
     ax.set_ylabel("Ratio (%)", fontsize=12)
     ax.set_title("Combined 20 Benchmarks: Spec Wakeup Retry/Error Ratios", fontsize=14)
     ax.set_xticks(x)
-    ax.set_xticklabels(ALL_BENCHMARKS, rotation=50, ha="right", fontsize=8)
+    ax.set_xticklabels(bench_display_names(ALL_BENCHMARKS), rotation=50, ha="right", fontsize=8)
     ax.legend(loc="upper left", fontsize=9)
     ax.grid(axis="y", alpha=0.3)
     plt.tight_layout()
@@ -1131,7 +1185,7 @@ def plot_commit_ld_st_ratio(data: dict, output_dir: Path):
     ld_sorted = [ld_p[i] for i in order]
     st_sorted = [st_p[i] for i in order]
 
-    fig, ax = plt.subplots(figsize=(18, 7))
+    fig, ax = plt.subplots(figsize=(18, 9))
     x_pos = list(range(len(b_sorted)))
     w = 0.6
     ax.bar(x_pos, ld_sorted, w, label="Committed Load", color="#4C72B0", edgecolor="white", linewidth=0.5)
@@ -1149,7 +1203,7 @@ def plot_commit_ld_st_ratio(data: dict, output_dir: Path):
     ax.set_ylabel("Committed Instruction Ratio (%)", fontsize=12)
     ax.set_title(f"Combined 20 Benchmarks: Committed Load/Store Ratio ({VARIANT_LABELS[var]})", fontsize=13)
     ax.set_xticks(x_pos)
-    ax.set_xticklabels(b_sorted, rotation=50, ha="right", fontsize=8)
+    ax.set_xticklabels(bench_display_names(b_sorted), rotation=50, ha="right", fontsize=8)
     ax.legend(loc="upper right", fontsize=9, framealpha=0.9)
     ax.grid(axis="y", alpha=0.3)
     plt.tight_layout()
@@ -1187,6 +1241,7 @@ def main():
     print_dcache_tables(data, ALL_BENCHMARKS)
     print_l2_tlb_table(data, ALL_BENCHMARKS)
     print_spec_wakeup_table(data, ALL_BENCHMARKS)
+    print_cmap_detail_table(data, ALL_BENCHMARKS)
 
     OUTPUT_DIR.mkdir(exist_ok=True)
     print(f"\nGenerating plots to {OUTPUT_DIR} ...")
