@@ -6,11 +6,11 @@
 　　
 
 摘要
-装入指令通常位于数据依赖链根部，其执行延迟沿依赖链向下游传播，是制约超标量乱序处理器单线程性能的关键因素之一。如何降低装入指令的延迟，已成为高性能处理器微架构设计的重要研究课题之一。本文提出一种跟踪基址的装入地址预测机制及其实现方法，利用装入指令的基址寄存器在回写时可被译码阶段观测这一特性，在译码阶段维护寄存器缓存基地址，使装入指令提前获取装入地址，绕过发射和读寄存器阶段直接进入访存流水线，从而减少装入指令经过的流水级，进而降低下游依赖指令的等待延迟。
-本文的主要工作包括：
-1）调研并分析了装入地址提前获取与指令发射优化、存储相关预测以及依赖指令推测式调度等相关技术，明确了装入地址预测及相关优化的技术路线与设计空间。
-2）设计并实现了以地址映射表为核心的装入地址预测机制。地址映射表在译码阶段跟踪寄存器与装入指令基地址的映射关系，实现装入地址的提前解析；通过立即数偏移融合扩展地址跟踪的覆盖范围以提高映射表命中率；引入存储地址缓冲区预检测缓解因提前访存引入的存储-装入内存序违例；扩展推测式唤醒机制进一步缩短依赖指令的等待延迟。
-3）基于 RISC-V 开源处理器 BOOM V3 实现本文方案，通过 FPGA 原型平台运行 SPEC CPU 2006 和 SPEC CPU 2017 基准程序进行验证与评测。实验结果表明，在 MediumBOOM 配置下，本文方案实现了 2.85% 的平均 IPC 提升，验证了该方法能在可控的硬件资源开销下有效缩短装入指令执行延迟，为超标量处理器的装入地址预测提供了一种实用的解决途径。
+　　装入指令通常位于数据依赖链根部，其执行延迟沿依赖链向下游传播，是制约超标量乱序处理器单线程性能的关键因素之一。如何降低装入指令的延迟，已成为高性能处理器微架构设计的重要研究课题。本文提出一种跟踪基址的装入地址预测机制及其实现方法，利用装入指令的基址寄存器值在回写时可被译码阶段观测这一特性，在译码阶段维护寄存器到基地址的映射关系，使装入指令提前获取装入地址，绕过发射和读寄存器阶段直接进入访存流水线，从而减少装入指令经过的流水级，降低下游依赖指令的等待延迟。
+　　本文的主要工作包括：
+　　1）调研并分析了装入地址提前获取与指令发射优化、存储相关预测以及依赖指令推测式调度等相关技术，明确了装入地址预测及相关优化的技术路线与设计空间。
+　　2）设计并实现了以地址映射表为核心的装入地址预测机制。地址映射表在译码阶段跟踪寄存器与基地址的映射关系，实现装入地址的提前解析；通过立即数偏移融合扩展地址跟踪的覆盖范围以提高映射表命中率；引入存储地址缓冲区预检测缓解因提前访存引入的存储-装入内存序违例；扩展推测式唤醒机制进一步缩短依赖指令的等待延迟。
+　　3）基于 RISC-V 开源处理器 BOOM V3 实现本文方案，通过 FPGA 原型平台运行 SPEC CPU 2006 和 SPEC CPU 2017 基准程序进行验证与评测。实验结果表明，在 MediumBOOM 配置下，本文方案实现了 2.85% 的平均 IPC 提升，验证了该方法能在可控的硬件资源开销下有效缩短装入指令执行延迟，为超标量处理器的装入地址预测提供了一种实用的解决途径。
 
 　　
 　　
@@ -26,12 +26,12 @@ English Title
 Fu Shaohong (Computer Architecture)
 Directed by Professor Liu Xianhua
 Abstract
-　　Load instruction execution latency is one of the key bottlenecks restricting the single-threaded performance of superscalar out-of-order processors. Load instructions constitute a large proportion of dynamic instructions and are generally located at the root of the data dependency chain. Their latency propagates downstream through the dependency chain, significantly impacting the overall pipeline throughput. Reducing the effective execution latency of load instructions is an important research direction for improving the single-threaded performance of processors.
-　　This paper, combining research on load instruction latency optimization techniques, designs and implements a base address-tracking load latency hiding mechanism, and implements and evaluates it based on the RISC-V open-source processor BOOM V3. The main contributions of this paper can be summarized as follows:
-　　1. A survey and analysis of related work was conducted, including load instruction latency optimization and instruction issue optimization, memory dependence prediction, and dependent instruction speculative scheduling techniques. These three types of work all aim to reduce the latency caused by load instructions to the overall system and can work together to improve processor execution efficiency.
-　　2. A base address-tracking load latency hiding mechanism was designed and implemented based on the BOOM V3 processor. First, the pipeline of the BOOM V3 processor was analyzed, and the complete execution flow of the load instruction was analyzed in detail, revealing the source of latency bottlenecks. Based on this, the design concept of the proposed solution was described in detail, and the four modules were explained: the Tracing Map core module reduces load instruction latency by pre-parsing the load address during the decoding stage, bypassing the issue queue; the immediate offset fusion extension improves the Tracing Map hit rate by tracking immediate addition and subtraction; SAB conflict pre-detection alleviates the memory-load order violation problem by obtaining the memory address in advance; and the speculative wake-up extension further optimizes the waiting latency of dependent instructions.
-　　3. Correctness verification and performance evaluation of the proposed solution were conducted. Experiments were performed using Verilator cycle-accurate simulation and an FPGA platform. Multi-level testing confirmed functional correctness, and performance evaluation was conducted based on the SPEC CPU 2006 benchmark and SPEC CPU 2017 benchmark programs. Experimental results show that a 2.85% IPC improvement was achieved on the FPGA platform under MediumBOOM configuration.
-　　
+　　Load instructions typically reside at the root of data dependency chains, and their execution latency propagates downstream along these chains, making them one of the key factors limiting the single-threaded performance of superscalar out-of-order processors. How to reduce load instruction latency has become an important research topic in high-performance processor microarchitecture design. This paper proposes a base address-tracking load address prediction mechanism and its implementation. By exploiting the property that the base register value of a load instruction can be observed at the decode stage upon writeback, the mechanism maintains a register-to-base-address mapping at the decode stage, enabling load instructions to obtain their target addresses early and bypass the issue and register-read stages to directly enter the memory pipeline, thereby reducing the number of pipeline stages traversed by load instructions and lowering the waiting latency of downstream dependent instructions.
+　　The main contributions of this paper are as follows:
+　　1) A survey and analysis of related techniques were conducted, including early load address acquisition and instruction issue optimization, memory dependence prediction, and speculative scheduling of dependent instructions, establishing the technical roadmap and design space for load address prediction and related optimizations.
+　　2) A load address prediction mechanism centered on an address mapping table was designed and implemented. The address mapping table tracks the mapping between registers and base addresses at the decode stage to achieve early resolution of load addresses; immediate offset fusion extends the coverage of address tracking to improve the mapping table hit rate; a Store Address Buffer (SAB) pre-detection mechanism is introduced to mitigate store-load memory order violations caused by early memory access; and speculative wakeup extension further reduces the waiting latency of dependent instructions.
+　　3) The proposed scheme was implemented on the RISC-V open-source processor BOOM V3 and validated through FPGA prototyping with SPEC CPU 2006 and SPEC CPU 2017 benchmark programs. Experimental results show that under the MediumBOOM configuration, the proposed scheme achieves a 2.85% average IPC improvement, demonstrating that the method can effectively reduce load instruction execution latency with controllable hardware overhead, providing a practical solution for load address prediction in superscalar processors.
+
 　　KEY WORDS: Superscalar Processor, RISC-V Processor, Load Instruction, Memory Address Prediction
 　　
 
