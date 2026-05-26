@@ -734,58 +734,58 @@ Tracing Map模块
 　　
 
 参考文献
-[1]	J. E. Smith and G. S. Sohi, "The microarchitecture of superscalar processors," Proceedings of the IEEE, vol. 83, no. 12, pp. 1609–1624, Dec. 1995.
-[2]	W. A. Wulf and S. A. McKee, "Hitting the memory wall: Implications of the obvious," ACM SIGARCH Computer Architecture News, vol. 23, no. 1, pp. 20–24, Mar. 1995.
+[1]	J. E. Smith and G. S. Sohi, "The microarchitecture of superscalar processors", Proceedings of the IEEE, vol. 83, no. 12, Dec. 1995, pp. 1609–1624.
+[2]	W. A. Wulf and S. A. McKee, "Hitting the memory wall: Implications of the obvious", ACM SIGARCH Computer Architecture News, vol. 23, no. 1, Mar. 1995, pp. 20–24.
 [3]	J. L. Hennessy and D. A. Patterson, Computer Architecture: A Quantitative Approach, 6th ed. Morgan Kaufmann, 2017.
-[4]	Aashish Phansalkar, Ajay Joshi, and Lizy K. John. 2007. Analysis of redundancy and application balance in the SPEC CPU2006 benchmark suite. SIGARCH Comput. Archit. News 35, 2 (May 2007), 412–423.
-[5]	A. Waterman and K. Asanović (Eds.), "The RISC-V Instruction Set Manual, Volume I: Unprivileged ISA, Document Version 20191213," RISC-V Foundation, Dec. 2019.
-[6]	John L. Henning. 2006. SPEC CPU2006 benchmark descriptions. SIGARCH Comput. Archit. News 34, 4 (September 2006), 1–17. https://doi.org/10.1145/1186736.1186737
-[7]	T. M. Austin and G. S. Sohi, "Zero-cycle loads: Microarchitecture support for reducing load latency," in Proc. 28th Annual IEEE/ACM International Symposium on Microarchitecture (MICRO-28), 1995, pp. 82–92.
-[8]	J. Kim, D. Genkin, and Y. Yarom, "SLAP: Data speculation attacks via load address prediction on Apple Silicon," in Proc. IEEE Symposium on Security and Privacy (S&P), 2025.
-[9]	M. Bekerman, A. Yoaz, F. Gabbay, S. Jourdan, M. Kalaev, and R. Ronen, "Early load address resolution via register tracking," in Proc. 27th Annual International Symposium on Computer Architecture (ISCA), 2000, pp. 306–315.
-[10]	S. Palacharla, N. P. Jouppi, and J. E. Smith, "Complexity-effective superscalar processors," in Proc. 24th Annual International Symposium on Computer Architecture (ISCA), 1997, pp. 206–218
-[11]	M. H. Lipasti, C. B. Wilkerson, and J. P. Shen, "Value locality and load value prediction," in Proc. 7th International Conference on Architectural Support for Programming Languages and Operating Systems (ASPLOS VII), 1996, pp. 138–147.
-[12]	J. González and A. González, "Speculative execution via address prediction and data prefetching," in Proc. 11th International Conference on Supercomputing (ICS), 1997, pp. 196–203.
-[13]	E. Morancho, J. M. Llabería, and À. Olivé, "Split last-address predictor," in Proc. 7th International Conference on Parallel Architectures and Compilation Techniques (PACT), 1998, pp. 230–237
-[14]	M. Bekerman, S. Jourdan, R. Ronen, G. Kirshenbaum, L. Rappoport, A. Yoaz, and U. Weiser, "Correlated load-address predictors," in Proc. 26th Annual International Symposium on Computer Architecture (ISCA), 1999, pp. 332–343.
-[15]	J. M. Tendler, J. S. Dodson, J. S. Fields, H. Le, and B. Sinharoy, "POWER4 system microarchitecture," IBM Journal of Research and Development, vol. 46, no. 1, pp. 5–25, Jan. 2002.
-[16]	A. Yazdanbakhsh, G. Pekhimenko, B. Falsafi, and O. Mutlu, "Constable: Improving performance and power efficiency by safely eliminating load instruction execution," in Proc. 51st Annual International Symposium on Computer Architecture (ISCA), 2024.
-[17]	T. E. Carlson, W. Heirman, O. Allam, S. Kaxiras, and L. Eeckhout, "The load slice core microarchitecture," in Proc. 42nd Annual International Symposium on Computer Architecture (ISCA), 2015, pp. 272–284.
-[18]	J. E. Smith, "Decoupled access/execute computer architectures," in Proc. 9th Annual Symposium on Computer Architecture (ISCA), 1982, pp. 112–119.
-[19]	O. Mutlu, J. Stark, C. Wilkerson, and Y. N. Patt, "Runahead execution: An alternative to very large instruction windows for out-of-order processors," in Proc. 9th International Symposium on High Performance Computer Architecture (HPCA), 2003, pp. 129–140.
-[20]	M. Alipour, S. Kaxiras, D. Black-Schaffer, and E. Hagersten, "Delay and bypass: Ready and criticality aware instruction scheduling in out-of-order processors," in Proc. 26th International Symposium on High Performance Computer Architecture (HPCA), 2020, pp. 424–434.
-[21]	A. Moshovos, S. E. Breach, T. N. Vijaykumar, and G. S. Sohi, "Dynamic speculation and synchronization of data dependences," in Proc. 24th Annual International Symposium on Computer Architecture (ISCA), 1997, pp. 181–193.
-[22]	G. Z. Chrysos and J. S. Emer, "Memory dependence prediction using store sets," in Proc. 25th Annual International Symposium on Computer Architecture (ISCA), 1998, pp. 142–153.
-[23]	R. E. Kessler, "The Alpha 21264 microprocessor," IEEE Micro, vol. 19, no. 2, pp. 24–36, Mar./Apr. 1999.
-[24]	H. W. Cain and M. H. Lipasti, "Memory ordering: A value-based approach," in Proc. 31st Annual International Symposium on Computer Architecture (ISCA), 2004, pp. 90–101.
-[25]	S. Subramaniam and G. H. Loh, "Store vectors for scalable memory dependence prediction and scheduling," in Proc. 12th International Symposium on High Performance Computer Architecture (HPCA), 2006, pp. 65–76.
-[26]	T. Sha, M. M. K. Martin, and A. Roth, "NoSQ: Store-load communication without a store queue," in Proc. 39th Annual IEEE/ACM International Symposium on Microarchitecture (MICRO-39), 2006, pp. 285–296.
-[27]	 I. Kim and M. H. Lipasti, "Understanding scheduling replay schemes," in Proc. 10th International Symposium on High Performance Computer Architecture (HPCA), 2004, pp. 198–209.
-[28]	B. A. Fields, S. Bodik, and M. D. Hill, "Slack: Maximizing performance under technological constraints," in Proc. 29th Annual International Symposium on Computer Architecture (ISCA), 2002, pp. 47–58
-[29]	A. Perais, A. Seznec, P. Michaud, A. Sembrant, and E. Hagersten, "Cost-effective speculative scheduling in high performance processors," in Proc. 42nd Annual International Symposium on Computer Architecture (ISCA), 2015, pp. 247–259.
-[30]	C. Celio, D. A. Patterson, and K. Asanović, "The Berkeley Out-of-Order Machine (BOOM): An industry-competitive, synthesizable, parameterized RISC-V processor," University of California, Berkeley, Tech. Rep. UCB/EECS-2015-167, 2015.
-[31]	J. Zhao, B. Korpan, A. Gonzalez, and K. Asanović, "SonicBOOM: The 3rd generation Berkeley Out-of-Order Machine," in Proc. Fourth Workshop on Computer Architecture Research with RISC-V (CARRV), 2020.
-[32]	J. Bachrach, H. Vo, B. Richards, Y. Lee, A. Waterman, R. Avižienis, J. Wawrzynek, and K. Asanović, "Chisel: Constructing hardware in a Scala embedded language," in Proc. 49th Annual Design Automation Conference (DAC), 2012, pp. 1216–1225.
-[33]	K. Asanović, R. Avižienis, J. Bachrach, S. Beamer, D. Biancolin, C. Celio, H. Cook, D. Dabbelt, J. Hauser, A. Izraelevitz, S. Karandikar, B. Keller, D. Kim, J. Koenig, Y. Lee, E. Love, M. Maas, A. Magyar, H. Mao, M. Moreto, A. Ou, D. A. Patterson, B. Richards, C. Schmidt, S. Twigg, H. Vo, and A. Waterman, "The Rocket Chip Generator," University of California, Berkeley, Tech. Rep. UCB/EECS-2016-17, 2016.
-[34]	K. C. Yeager, "The MIPS R10000 superscalar microprocessor," IEEE Micro, vol. 16, no. 2, pp. 28–40, Apr. 1996.
-[35]	A. Seznec, "The L-TAGE Branch Predictor," Journal of Instruction-Level Parallelism, vol. 9, pp. 1–13, 2007.
-[36]	A. Seznec, "A 64-Kbytes ITTAGE indirect branch predictor," in Proc. 2nd JILP Workshop on Computer Architecture Competitions (JWAC-2): Championship Branch Prediction (CBP-2), 2011.
-[37]	T.-Y. Yeh and Y. N. Patt, "Two-level adaptive training branch prediction," in Proc. 24th Annual IEEE/ACM International Symposium on Microarchitecture (MICRO-24), 1991, pp. 51–61.
-[38]	A. Amid, D. Biancolin, A. Gonzalez, et al., "Chipyard: Integrated design, simulation, and implementation framework for custom SoCs," IEEE Micro, vol. 40, no. 4, pp. 10–21, Jul./Aug. 2020.
+[4]	A. Phansalkar, A. Joshi, and L. K. John, "Analysis of redundancy and application balance in the SPEC CPU2006 benchmark suite", ACM SIGARCH Computer Architecture News, vol. 35, no. 2, May 2007, pp. 412–423.
+[5]	A. Waterman and K. Asanović (Eds.), "The RISC-V Instruction Set Manual, Volume I: Unprivileged ISA, Document Version 20191213", RISC-V Foundation, Dec. 2019.
+[6]	J. L. Henning, "SPEC CPU2006 benchmark descriptions", ACM SIGARCH Computer Architecture News, vol. 34, no. 4, Sep. 2006, pp. 1–17.
+[7]	T. M. Austin and G. S. Sohi, "Zero-cycle loads: Microarchitecture support for reducing load latency", in Proc. 28th Annual IEEE/ACM International Symposium on Microarchitecture (MICRO-28), 1995, pp. 82–92.
+[8]	J. Kim, D. Genkin, and Y. Yarom, "SLAP: Data speculation attacks via load address prediction on Apple Silicon", in Proc. IEEE Symposium on Security and Privacy (S&P), 2025.
+[9]	M. Bekerman, A. Yoaz, F. Gabbay, S. Jourdan, M. Kalaev, and R. Ronen, "Early load address resolution via register tracking", in Proc. 27th Annual International Symposium on Computer Architecture (ISCA), 2000, pp. 306–315.
+[10]	S. Palacharla, N. P. Jouppi, and J. E. Smith, "Complexity-effective superscalar processors", in Proc. 24th Annual International Symposium on Computer Architecture (ISCA), 1997, pp. 206–218.
+[11]	M. H. Lipasti, C. B. Wilkerson, and J. P. Shen, "Value locality and load value prediction", in Proc. 7th International Conference on Architectural Support for Programming Languages and Operating Systems (ASPLOS VII), 1996, pp. 138–147.
+[12]	J. González and A. González, "Speculative execution via address prediction and data prefetching", in Proc. 11th International Conference on Supercomputing (ICS), 1997, pp. 196–203.
+[13]	E. Morancho, J. M. Llabería, and À. Olivé, "Split last-address predictor", in Proc. 7th International Conference on Parallel Architectures and Compilation Techniques (PACT), 1998, pp. 230–237.
+[14]	M. Bekerman, S. Jourdan, R. Ronen, G. Kirshenbaum, L. Rappoport, A. Yoaz, and U. Weiser, "Correlated load-address predictors", in Proc. 26th Annual International Symposium on Computer Architecture (ISCA), 1999, pp. 332–343.
+[15]	J. M. Tendler, J. S. Dodson, J. S. Fields, H. Le, and B. Sinharoy, "POWER4 system microarchitecture", IBM Journal of Research and Development, vol. 46, no. 1, Jan. 2002, pp. 5–25.
+[16]	A. Yazdanbakhsh, G. Pekhimenko, B. Falsafi, and O. Mutlu, "Constable: Improving performance and power efficiency by safely eliminating load instruction execution", in Proc. 51st Annual International Symposium on Computer Architecture (ISCA), 2024.
+[17]	T. E. Carlson, W. Heirman, O. Allam, S. Kaxiras, and L. Eeckhout, "The load slice core microarchitecture", in Proc. 42nd Annual International Symposium on Computer Architecture (ISCA), 2015, pp. 272–284.
+[18]	J. E. Smith, "Decoupled access/execute computer architectures", in Proc. 9th Annual Symposium on Computer Architecture (ISCA), 1982, pp. 112–119.
+[19]	O. Mutlu, J. Stark, C. Wilkerson, and Y. N. Patt, "Runahead execution: An alternative to very large instruction windows for out-of-order processors", in Proc. 9th International Symposium on High Performance Computer Architecture (HPCA), 2003, pp. 129–140.
+[20]	M. Alipour, S. Kaxiras, D. Black-Schaffer, and E. Hagersten, "Delay and bypass: Ready and criticality aware instruction scheduling in out-of-order processors", in Proc. 26th International Symposium on High Performance Computer Architecture (HPCA), 2020, pp. 424–434.
+[21]	A. Moshovos, S. E. Breach, T. N. Vijaykumar, and G. S. Sohi, "Dynamic speculation and synchronization of data dependences", in Proc. 24th Annual International Symposium on Computer Architecture (ISCA), 1997, pp. 181–193.
+[22]	G. Z. Chrysos and J. S. Emer, "Memory dependence prediction using store sets", in Proc. 25th Annual International Symposium on Computer Architecture (ISCA), 1998, pp. 142–153.
+[23]	R. E. Kessler, "The Alpha 21264 microprocessor", IEEE Micro, vol. 19, no. 2, Mar./Apr. 1999, pp. 24–36.
+[24]	H. W. Cain and M. H. Lipasti, "Memory ordering: A value-based approach", in Proc. 31st Annual International Symposium on Computer Architecture (ISCA), 2004, pp. 90–101.
+[25]	S. Subramaniam and G. H. Loh, "Store vectors for scalable memory dependence prediction and scheduling", in Proc. 12th International Symposium on High Performance Computer Architecture (HPCA), 2006, pp. 65–76.
+[26]	T. Sha, M. M. K. Martin, and A. Roth, "NoSQ: Store-load communication without a store queue", in Proc. 39th Annual IEEE/ACM International Symposium on Microarchitecture (MICRO-39), 2006, pp. 285–296.
+[27]	 I. Kim and M. H. Lipasti, "Understanding scheduling replay schemes", in Proc. 10th International Symposium on High-Performance Computer Architecture (HPCA), 2004, pp. 198–209.
+[28]	B. A. Fields, S. Bodik, and M. D. Hill, "Slack: Maximizing performance under technological constraints", in Proc. 29th Annual International Symposium on Computer Architecture (ISCA), 2002, pp. 47–58.
+[29]	A. Perais, A. Seznec, P. Michaud, A. Sembrant, and E. Hagersten, "Cost-effective speculative scheduling in high performance processors", in Proc. 42nd Annual International Symposium on Computer Architecture (ISCA), 2015, pp. 247–259.
+[30]	C. Celio, D. A. Patterson, and K. Asanović, "The Berkeley Out-of-Order Machine (BOOM): An industry-competitive, synthesizable, parameterized RISC-V processor", University of California, Berkeley, Tech. Rep. UCB/EECS-2015-167, 2015.
+[31]	J. Zhao, B. Korpan, A. Gonzalez, and K. Asanović, "SonicBOOM: The 3rd generation Berkeley Out-of-Order Machine", in Proc. Fourth Workshop on Computer Architecture Research with RISC-V (CARRV), 2020.
+[32]	J. Bachrach, H. Vo, B. Richards, Y. Lee, A. Waterman, R. Avižienis, J. Wawrzynek, and K. Asanović, "Chisel: Constructing hardware in a Scala embedded language", in Proc. 49th Annual Design Automation Conference (DAC), 2012, pp. 1216–1225.
+[33]	K. Asanović, R. Avižienis, J. Bachrach, S. Beamer, D. Biancolin, C. Celio, H. Cook, D. Dabbelt, J. Hauser, A. Izraelevitz, S. Karandikar, B. Keller, D. Kim, J. Koenig, Y. Lee, E. Love, M. Maas, A. Magyar, H. Mao, M. Moreto, A. Ou, D. A. Patterson, B. Richards, C. Schmidt, S. Twigg, H. Vo, and A. Waterman, "The Rocket Chip Generator", University of California, Berkeley, Tech. Rep. UCB/EECS-2016-17, 2016.
+[34]	K. C. Yeager, "The MIPS R10000 superscalar microprocessor", IEEE Micro, vol. 16, no. 2, Apr. 1996, pp. 28–40.
+[35]	A. Seznec, "The L-TAGE Branch Predictor", Journal of Instruction-Level Parallelism, vol. 9, 2007, pp. 1–13.
+[36]	A. Seznec, "A 64-Kbytes ITTAGE indirect branch predictor", in Proc. 2nd JILP Workshop on Computer Architecture Competitions (JWAC-2): Championship Branch Prediction (CBP-2), 2011.
+[37]	T.-Y. Yeh and Y. N. Patt, "Two-level adaptive training branch prediction", in Proc. 24th Annual IEEE/ACM International Symposium on Microarchitecture (MICRO-24), 1991, pp. 51–61.
+[38]	A. Amid, D. Biancolin, A. Gonzalez, et al., "Chipyard: Integrated design, simulation, and implementation framework for custom SoCs", IEEE Micro, vol. 40, no. 4, Jul./Aug. 2020, pp. 10–21.
 [39]	Verilator[EB/OL].https://github.com/verilator/verilator
-[40]	A. Izraelevitz, J. Koenig, P. Li, R. Lin, A. Wang, A. Magyar, D. Kim, C. Schmidt, C. Markley, J. Lawson, and J. Bachrach, "Reusability is FIRRTL ground: Hardware construction languages, compiler frameworks, and transformations," in Proc. IEEE/ACM International Conference on Computer-Aided Design (ICCAD), 2017, pp. 209–216.
-[41]	Digilent Inc., "Genesys 2 Kintex-7 FPGA Development Board Reference Manual," 2016. [Online]. Available: https://digilent.com/reference/programmable-logic/genesys-2/reference-manual
-[42]	Xilinx (AMD), "Vivado Design Suite User Guide: Synthesis," UG901, 2023.
-[43]	RISC-V International, "OpenSBI: Open Source Supervisor Binary Interface Implementation," GitHub. [Online]. Available: https://github.com/riscv-software-src/opensbi
-[44]	L. Torvalds et al., "Linux kernel source tree," [Online]. Available: https://github.com/torvalds/linux
-[45]	RISC-V Software, "riscv-tests: RISC-V ISA compliance test suite," GitHub. [Online]. Available: https://github.com/riscv-software-src/riscv-tests
-[46]	R. P. Weicker, "Dhrystone: A synthetic systems programming benchmark," Communications of the ACM, vol. 27, no. 10, pp. 1013–1030, Oct. 1984.
-[47]	RISC-V Software, "riscv-pk: RISC-V Proxy Kernel and Boot Loader," GitHub. [Online]. Available: https://github.com/riscv-software-src/riscv-pk
-[48]	RISC-V Software, "RISC-V GNU Compiler Toolchain," GitHub. [Online]. Available: https://github.com/riscv-collab/riscv-gnu-toolchain
-[49]	T. Sherwood, E. Perelman, G. Hamerly, and B. Calder, "Automatically characterizing large scale program behavior," in Proc. 10th International Conference on Architectural Support for Programming Languages and Operating Systems (ASPLOS), 2002, pp. 45–57.
-[50]	Shuiliusheng, "RISCV-BOOM 硬件事件计数器与采样支持框架," https://github.com/Shuiliusheng/boom_stop.
-[51]	P. J. Fleming and J. J. Wallace, "How not to lie with statistics: The correct way to summarize benchmark results," Communications of the ACM, vol. 29, no. 3, pp. 218–221, 1986.
-[52]	James Bucek, Klaus-Dieter Lange, and Jóakim v. Kistowski. 2018. SPEC CPU2017: Next-Generation Compute Benchmark. In Companion of the 2018 ACM/SPEC International Conference on Performance Engineering (ICPE '18). Association for Computing Machinery, New York, NY, USA, 41–42. 
+[40]	A. Izraelevitz, J. Koenig, P. Li, R. Lin, A. Wang, A. Magyar, D. Kim, C. Schmidt, C. Markley, J. Lawson, and J. Bachrach, "Reusability is FIRRTL ground: Hardware construction languages, compiler frameworks, and transformations", in Proc. IEEE/ACM International Conference on Computer-Aided Design (ICCAD), 2017, pp. 209–216.
+[41]	Digilent Inc., "Genesys 2 Kintex-7 FPGA Development Board Reference Manual", 2016. [Online]. Available: https://digilent.com/reference/programmable-logic/genesys-2/reference-manual
+[42]	Xilinx (AMD), "Vivado Design Suite User Guide: Synthesis", UG901, 2023.
+[43]	RISC-V International, "OpenSBI: Open Source Supervisor Binary Interface Implementation", GitHub. [Online]. Available: https://github.com/riscv-software-src/opensbi
+[44]	L. Torvalds et al., "Linux kernel source tree", [Online]. Available: https://github.com/torvalds/linux
+[45]	RISC-V Software, "riscv-tests: RISC-V ISA compliance test suite", GitHub. [Online]. Available: https://github.com/riscv-software-src/riscv-tests
+[46]	R. P. Weicker, "Dhrystone: A synthetic systems programming benchmark", Communications of the ACM, vol. 27, no. 10, Oct. 1984, pp. 1013–1030.
+[47]	RISC-V Software, "riscv-pk: RISC-V Proxy Kernel and Boot Loader", GitHub. [Online]. Available: https://github.com/riscv-software-src/riscv-pk
+[48]	RISC-V Software, "RISC-V GNU Compiler Toolchain", GitHub. [Online]. Available: https://github.com/riscv-collab/riscv-gnu-toolchain
+[49]	T. Sherwood, E. Perelman, G. Hamerly, and B. Calder, "Automatically characterizing large scale program behavior", in Proc. 10th International Conference on Architectural Support for Programming Languages and Operating Systems (ASPLOS), 2002, pp. 45–57.
+[50]	Shuiliusheng, "RISCV-BOOM 硬件事件计数器与采样支持框架", https://github.com/Shuiliusheng/boom_stop.
+[51]	P. J. Fleming and J. J. Wallace, "How not to lie with statistics: The correct way to summarize benchmark results", Communications of the ACM, vol. 29, no. 3, 1986, pp. 218–221.
+[52]	J. Bucek, K.-D. Lange, and J. v. Kistowski, "SPEC CPU2017: Next-generation compute benchmark", in Companion of the 2018 ACM/SPEC International Conference on Performance Engineering (ICPE), 2018, pp. 41–42.
 
 　　
 　　
